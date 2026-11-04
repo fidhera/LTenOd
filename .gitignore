@@ -1,0 +1,9 @@
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+node_modules/
+temp_repo/
+*.mp4
+DemoPraktikumUG.mp4

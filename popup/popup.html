@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LTenOd Settings</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="glass-container">
+    <!-- Header -->
+    <header class="glass-header">
+      <div class="brand">
+        <img src="../icon.png" alt="LTenOd" class="logo">
+        <div class="brand-info">
+          <h1>LTenOd</h1>
+          <span class="version">v1.3.0 Universal</span>
+        </div>
+      </div>
+      <div class="header-status" id="headerConnection">Belum dicek</div>
+    </header>
+
+    <!-- Platform Target -->
+    <div class="glass-card platform-card">
+      <div class="card-label">Platform Terintegrasi</div>
+      <div class="chips">
+        <span class="chip">praktikum.gunadarma.ac.id</span>
+        <span class="chip">v-class.gunadarma.ac.id</span>
+        <span class="chip">praktikum-iflab</span>
+      </div>
+    </div>
+
+    <!-- Provider Selection -->
+    <div class="glass-card">
+      <label for="providerSelect" class="card-label">Penyedia AI / Gateway</label>
+      <select id="providerSelect">
+        <option value="gemini">Google Gemini (Direct)</option>
+        <option value="openrouter">OpenRouter (Multi-Model Hub)</option>
+        <option value="deepseek">DeepSeek (V3 & R1)</option>
+        <option value="groq">Groq (Ultra Cepat 500 T/s)</option>
+        <option value="openai">OpenAI (ChatGPT)</option>
+        <option value="custom">Kustom / 9Router / One-API Proxy</option>
+      </select>
+
+      <!-- Base URL (Otomatis / Kustom) -->
+      <div class="field-group" id="baseUrlGroup">
+        <label for="baseUrlInput" class="sub-label">API Base URL</label>
+        <input type="text" id="baseUrlInput" placeholder="https://..." spellcheck="false">
+      </div>
+
+      <!-- API Key -->
+      <div class="field-group">
+        <label for="apiKeyInput" class="sub-label">API Token / Key</label>
+        <div class="input-row">
+          <input type="password" id="apiKeyInput" placeholder="sk-..." autocomplete="off" spellcheck="false">
+          <button type="button" id="toggleKeyVisibility" class="btn-glass-subtle">Perlihatkan</button>
+        </div>
+      </div>
+
+      <div class="test-row">
+        <button type="button" id="btnDetectModels" class="btn-glass-action">Periksa & Deteksi Model</button>
+        <span id="testStatus" class="status-indicator"></span>
+      </div>
+    </div>
+
+    <!-- Model Detection Result -->
+    <div class="glass-card">
+      <div class="card-header-flex">
+        <span class="card-label">Model yang Tersedia</span>
+        <span class="count-badge" id="modelCountBadge">1 model</span>
+      </div>
+      <input type="text" id="modelSearchInput" placeholder="Cari model (misal: r1, claude, gpt-4o, argon)..." spellcheck="false" class="search-input">
+      <select id="modelSelect">
+        <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
+      </select>
+      <div class="metric-row">
+        <span class="metric-label">Latensi Respons:</span>
+        <span class="metric-value" id="latencyDisplay">~300ms</span>
+      </div>
+    </div>
+
+    <!-- Execution Mode -->
+    <div class="glass-card">
+      <div class="card-label">Mode Pengerjaan</div>
+      <div class="mode-selection">
+        <label class="mode-item">
+          <input type="radio" name="solveMode" value="auto" checked>
+          <div class="mode-text">
+            <strong>Otomatis Penuh (Lepas Tangan)</strong>
+            <span>Menjawab dan lanjut ke soal berikutnya secara kontinu.</span>
+          </div>
+        </label>
+        <label class="mode-item">
+          <input type="radio" name="solveMode" value="highlight">
+          <div class="mode-text">
+            <strong>Highlight Saja</strong>
+            <span>Menandai opsi benar. Klik dikerjakan manual oleh Anda.</span>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Delay Navigation -->
+    <div class="glass-card">
+      <div class="card-label">Jeda Auto-Next (Detik)</div>
+      <div class="delay-row">
+        <label class="delay-field">
+          <span>Minimum</span>
+          <input type="number" id="minDelay" min="1" max="15" value="1">
+        </label>
+        <label class="delay-field">
+          <span>Maksimum</span>
+          <input type="number" id="maxDelay" min="1" max="30" value="3">
+        </label>
+      </div>
+      <div class="metric-note">
+        Catatan: Jeda di atas adalah waktu tunggu sebelum klik Next. Waktu total pengerjaan dipengaruhi oleh latensi internet dan server provider.
+      </div>
+    </div>
+
+    <!-- Extra: Audio Alert -->
+    <div class="glass-card extra-options">
+      <label class="checkbox-row">
+        <input type="checkbox" id="audioAlert" checked>
+        <span>Bunyikan nada halus saat kuis selesai</span>
+      </label>
+    </div>
+
+    <!-- Save Button -->
+    <div class="footer-actions">
+      <button type="button" id="btnSave" class="btn-primary-glass">Simpan Konfigurasi</button>
+      <div id="saveToast" class="save-toast" role="status" aria-live="polite">Konfigurasi berhasil disimpan</div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
