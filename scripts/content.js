@@ -367,24 +367,44 @@
     const finishBanner = document.getElementById('ltensolver-finish-guard-banner');
     if (finishBanner) finishBanner.style.display = 'none';
 
-    // Cek jika halaman saat ini adalah hasil evaluasi CodeRunner yang sudah lulus
+    // Cek jika halaman saat ini adalah hasil evaluasi CodeRunner
     const testResults = document.querySelector('.coderunner-test-results');
-    if (testResults) {
-      const hasFailures = testResults.querySelector('.incorrect, .fail, .alert-danger, .badge-danger');
-      if (hasFailures) {
-        stopAutoLoop('Hasil Check CodeRunner: Ada test case yang belum lulus. Silakan periksa pesan error di tabel.');
-        btnSolve.classList.remove('loading');
-        return;
-      } else {
-        footerStatus.textContent = 'Semua test case lolos! Melanjutkan...';
+    const isCodeRunnerQuestion = !!document.querySelector('.que.coderunner, textarea.coderunner-answer, .ui_wrapper .ace_editor');
+
+    if (isCodeRunnerQuestion && testResults) {
+      const isBad = testResults.classList.contains('bad') ||
+        !!document.querySelector('.im-feedback .incorrect') ||
+        !!testResults.querySelector('.text-danger, .fa-circle-xmark, [title*="Incorrect"]');
+
+      if (!isBad && testResults.querySelector('.text-success, .fa-circle-check, [title*="Correct"]')) {
+        // SEMUA TEST CASE LOLOS 100%!
+        sessionStorage.removeItem('ltensolver_code_retries');
+        footerStatus.textContent = 'Semua test case lolos 100%! Melanjutkan ke soal berikutnya...';
         footerStatus.style.color = '#34d399';
         playChimeSound(880);
 
         if (currentSettings.solveMode === 'auto') {
           btnSolve.classList.remove('loading');
-          executeNextPageClick();
+          setTimeout(() => executeNextPageClick(), 1000);
+          return;
+        } else {
+          btnSolve.classList.remove('loading');
           return;
         }
+      } else if (isBad) {
+        // ADA TEST CASE GAGAL: JANGAN KLIK NEXT PAGE!
+        // AI akan menganalisis perbandingan Expected vs Got dan memperbaiki kodenya
+        let codeRetries = parseInt(sessionStorage.getItem('ltensolver_code_retries') || '0', 10);
+        if (codeRetries >= 5) {
+          sessionStorage.removeItem('ltensolver_code_retries');
+          stopAutoLoop('Telah mencoba 5x perbaikan otomatis. Periksa rincian perbedaan Expected vs Got di halaman.');
+          btnSolve.classList.remove('loading');
+          return;
+        }
+        codeRetries++;
+        sessionStorage.setItem('ltensolver_code_retries', String(codeRetries));
+        footerStatus.textContent = `Memperbaiki kode berdasarkan output test case (${codeRetries}/5)...`;
+        footerStatus.style.color = '#f59e0b';
       }
     }
 
@@ -422,7 +442,14 @@
       }
 
       retryCount = 0;
-      footerStatus.textContent = questionData.type === 'coderunner' ? 'Menyusun solusi koding via AI...' : 'Menganalisis jawaban via AI...';
+      const isFixingCode = questionData.failedTests && questionData.failedTests.length > 0;
+      if (questionData.type === 'coderunner') {
+        footerStatus.textContent = isFixingCode ?
+          'Memperbaiki kode via AI (menganalisis Expected vs Got)...' :
+          'Menyusun solusi koding via AI...';
+      } else {
+        footerStatus.textContent = 'Menganalisis jawaban via AI...';
+      }
 
       chrome.runtime.sendMessage(
         { action: 'solveQuestion', data: questionData },
@@ -565,36 +592,67 @@
 
   /**
    * Ekstraksi Soal Praktikum Koding (CodeRunner / Ace Editor)
+   * Dilengkapi deteksi kegagalan test case (Expected vs Got) untuk auto-refine / auto-fix
    */
   async function extractCodeRunnerData(qContainer) {
     const qTextEl = qContainer.querySelector(adapter.questionText || '.qtext');
     let questionText = qTextEl ? qTextEl.innerText.trim() : '';
 
-    // Ambil contoh test case jika ada tabel coderunnerexamples
+    // Ambil contoh test case bawaan jika ada tabel coderunnerexamples
     const exampleTable = qContainer.querySelector(adapter.codeExamples || 'table.coderunnerexamples, .coderunner-examples');
     if (exampleTable) {
       const rows = exampleTable.querySelectorAll('tbody tr');
       if (rows.length > 0) {
-        let examplesText = '\n\nCONTOH TEST CASE:';
+        let examplesText = '\n\nCONTOH TEST CASE DARI SOAL:';
         rows.forEach((r, idx) => {
           const cells = r.querySelectorAll('td');
           if (cells.length >= 2) {
-            examplesText += `\nTest ${idx + 1}:\nInput:\n${cells[0].innerText.trim()}\nExpected Result:\n${cells[1].innerText.trim()}\n---`;
+            examplesText += `\nTest ${idx + 1}:\nInput:\n${cleanCellText(cells[0])}\nExpected Result:\n${cleanCellText(cells[1])}\n---`;
           }
         });
         questionText += examplesText;
       }
     }
 
-    // Ambil starter code dari reset button data-reload-text atau isi textarea
+    // Ambil starter code dari reset button data-reload-text
     const textarea = qContainer.querySelector(adapter.codeEditor || 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]');
     const resetBtn = qContainer.querySelector(adapter.codeResetBtn || 'input.answer_reset_btn');
 
     let starterCode = '';
     if (resetBtn && resetBtn.getAttribute('data-reload-text')) {
       starterCode = resetBtn.getAttribute('data-reload-text').trim();
-    } else if (textarea && textarea.value && textarea.value.trim().length > 0) {
-      starterCode = textarea.value.trim();
+    }
+
+    // Ambil kode yang sedang ada di editor saat ini
+    let currentCode = '';
+    if (textarea && textarea.value && textarea.value.trim().length > 0) {
+      currentCode = textarea.value.trim();
+    }
+    if (!starterCode) {
+      starterCode = currentCode;
+    }
+
+    // Ekstraksi hasil evaluasi test case yang gagal jika ada (.coderunner-test-results)
+    const testResultsTable = document.querySelector('table.coderunner-test-results, .coderunner-test-results table');
+    const failedTests = [];
+
+    if (testResultsTable) {
+      const rows = testResultsTable.querySelectorAll('tbody tr');
+      rows.forEach((r, idx) => {
+        const isFail = !!r.querySelector('.text-danger, .fa-circle-xmark, [title*="Incorrect"]');
+        if (isFail) {
+          const inEl = r.querySelector('.c1 pre') || r.querySelector('.c1');
+          const expEl = r.querySelector('.c2 pre') || r.querySelector('.c2');
+          const gotEl = r.querySelector('.c3 pre') || r.querySelector('.c3');
+
+          failedTests.push({
+            testIndex: idx + 1,
+            input: cleanCellText(inEl),
+            expected: cleanCellText(expEl),
+            got: cleanCellText(gotEl)
+          });
+        }
+      });
     }
 
     const lang = (textarea ? textarea.getAttribute('data-lang') : '') || 'Python3';
@@ -618,10 +676,19 @@
       container: qContainer,
       questionText,
       starterCode,
+      currentCode: currentCode || starterCode,
+      failedTests,
       lang,
       textareaId,
       images
     };
+  }
+
+  function cleanCellText(el) {
+    if (!el) return '';
+    const clone = el.cloneNode(true);
+    clone.querySelectorAll('button, .xy-copy-button, .visually-hidden, .fa, .icon').forEach(n => n.remove());
+    return clone.innerText.trim();
   }
 
   /**
@@ -908,6 +975,19 @@
   function executeNextPageClick() {
     if (isNavigating) return;
 
+    // GUARD SOAL KODING: Jangan pernah klik Next Page jika test case masih ada yang gagal
+    const isCodeRunner = !!document.querySelector('.que.coderunner, textarea.coderunner-answer, .ui_wrapper .ace_editor');
+    const testResults = document.querySelector('.coderunner-test-results');
+    if (isCodeRunner && testResults) {
+      const isBad = testResults.classList.contains('bad') ||
+        !!document.querySelector('.im-feedback .incorrect') ||
+        !!testResults.querySelector('.text-danger, .fa-circle-xmark, [title*="Incorrect"]');
+      if (isBad) {
+        console.warn('[LTenOd] Menahan Next Page: Soal koding belum lulus semua test case.');
+        return;
+      }
+    }
+
     const footerStatus = document.getElementById('ltensolver-footer-status');
     const nextBtn = findStrictNextButton();
 
@@ -1001,8 +1081,8 @@
     resultBox.style.display = 'block';
 
     if (result.type === 'coderunner') {
-      choiceEl.textContent = 'Solusi Koding Siap';
-      confEl.textContent = 'Koding';
+      choiceEl.textContent = result.isFix ? 'Perbaikan Koding Selesai' : 'Solusi Koding Siap';
+      confEl.textContent = result.isFix ? 'Refined' : 'Koding';
       confEl.className = 'ltensolver-confidence-badge';
 
       if (result.modelUsed) {
@@ -1015,7 +1095,7 @@
       }
 
       const modelLabel = result.modelUsed ? ` • ${result.modelUsed}` : '';
-      descEl.textContent = `${result.explanation || 'Kode program berhasil diisikan ke editor CodeRunner.'}${modelLabel}`;
+      descEl.textContent = `${result.explanation || (result.isFix ? 'Kode berhasil diperbaiki berdasarkan output test case.' : 'Kode program berhasil diisikan ke editor CodeRunner.')}${modelLabel}`;
       return;
     }
 

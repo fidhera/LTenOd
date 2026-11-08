@@ -197,8 +197,45 @@ Catatan: "index_jawaban" integer 0-based (A=0, B=1, C=2, D=3). "confidence": "ti
 /**
  * Pemecah soal koding (CodeRunner) via Google Gemini Native
  */
-async function solveCodeRunnerWithGemini({ apiKey, model, questionText, starterCode, lang, images }) {
-  const userPrompt = `Anda adalah programmer expert untuk praktikum pemrograman (${lang || 'Python'}).
+async function solveCodeRunnerWithGemini({ apiKey, model, questionText, starterCode, currentCode, failedTests, lang, images }) {
+  let userPrompt = '';
+
+  if (failedTests && failedTests.length > 0) {
+    let failureDetails = '';
+    failedTests.forEach((ft, i) => {
+      failureDetails += `--- TEST CASE ${ft.testIndex || (i + 1)} GAGAL ---\n` +
+        `[INPUT]:\n${ft.input || '(tanpa argumen/stdin)'}\n\n` +
+        `[EXPECTED OUTPUT (WAJIB PERSIS SAMA)]:\n${ft.expected}\n\n` +
+        `[GOT OUTPUT (OUTPUT SALAH DARI KODE ANDA)]:\n${ft.got}\n` +
+        `-----------------------------------------\n\n`;
+    });
+
+    userPrompt = `Anda adalah programmer expert untuk praktikum pemrograman (${lang || 'Python'}).
+KODE SEBELUMNYA TELAH DIUJI DENGAN TEST CASE CODERUNNER, NAMUN ${failedTests.length} TEST CASE MENGALAMI KEGAGALAN!
+
+RINCIAN PERBANDINGAN EXPECTED OUTPUT VS GOT OUTPUT:
+${failureDetails}
+
+KODE PROGRAM SEBELUMNYA YANG SEDANG DIUJI (PERBAIKI INI):
+\`\`\`${lang || 'python'}
+${currentCode || starterCode}
+\`\`\`
+
+INSTRUKSI & ATURAN SOAL:
+${questionText}
+
+TUGAS ANDA:
+1. Analisis mendalam perbedaan antara "Got Output" dan "Expected Output".
+2. Temukan penyebab perbedaan tersebut (misalnya: keyword atau token yang kurang di daftar KEYWORDS/OPERATORS, kesalahan logika parsing, karakter pemisah, perulangan, atau formatting newline).
+3. Perbaiki seluruh kode program tersebut sehingga menghasilkan output yang PERSIS sesuai dengan "Expected Output" pada semua test case.
+4. Tetap patuhi batasan soal (dilarang pakai re/eval, pertahankan struktur nama class/method).
+5. Kembalikan HANYA JSON valid:
+{
+  "code": "seluruh kode program lengkap yang sudah diperbaiki dari baris pertama sampai terakhir",
+  "explanation": "penjelasan singkat akar masalah yang diperbaiki"
+}`;
+  } else {
+    userPrompt = `Anda adalah programmer expert untuk praktikum pemrograman (${lang || 'Python'}).
 Berikut instruksi soal praktikum dan starter code yang harus diselesaikan:
 
 INSTRUKSI & CONTOH TEST CASE:
@@ -218,6 +255,7 @@ TUGAS ANDA:
   "code": "seluruh isi kode program lengkap dari baris pertama sampai terakhir yang sudah siap pakai",
   "explanation": "ringkasan singkat apa saja TODO yang telah diselesaikan"
 }`;
+  }
 
   const parts = [{ text: userPrompt }];
 
@@ -260,7 +298,8 @@ TUGAS ANDA:
   const rawText = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!rawText) throw new Error('Tidak ada respon teks dari model.');
 
-  return parseCodeRunnerResponse(rawText, targetModel);
+  const isFix = !!(failedTests && failedTests.length > 0);
+  return parseCodeRunnerResponse(rawText, targetModel, isFix);
 }
 
 /**
@@ -337,23 +376,56 @@ Catatan: "index_jawaban" adalah indeks integer 0-based dari pilihan (A=0, B=1, C
 /**
  * Pemecah soal koding (CodeRunner) via OpenAI-Compatible / 9Router
  */
-async function solveCodeRunnerWithOpenAICompatible({ baseUrl, apiKey, model, questionText, starterCode, lang, images }) {
+async function solveCodeRunnerWithOpenAICompatible({ baseUrl, apiKey, model, questionText, starterCode, currentCode, failedTests, lang, images }) {
   if (!baseUrl) {
     throw new Error('Base URL belum diisi untuk provider ini.');
   }
 
   const systemPrompt = `Anda adalah programmer expert untuk praktikum pemrograman (${lang || 'Python'}).
-Lengkapi seluruh TODO pada starter code yang diberikan sesuai instruksi soal.
-PENTING: Output Anda HARUS berupa JSON valid:
+Lengkapi seluruh TODO atau perbaiki kode program sesuai instruksi dan rincian test case.
+PENTING: Output Anda HARUS berupa JSON valid tanpa teks lain:
 {
   "code": "seluruh isi kode program lengkap yang sudah selesai dikerjakan",
-  "explanation": "ringkasan singkat penyelesaian"
+  "explanation": "ringkasan perbaikan atau penyelesaian"
 }`;
+
+  let userText = '';
+
+  if (failedTests && failedTests.length > 0) {
+    let failureDetails = '';
+    failedTests.forEach((ft, i) => {
+      failureDetails += `--- TEST CASE ${ft.testIndex || (i + 1)} GAGAL ---\n` +
+        `[INPUT]:\n${ft.input || '(tanpa input stdin)'}\n\n` +
+        `[EXPECTED OUTPUT (WAJIB SAMA)]:\n${ft.expected}\n\n` +
+        `[GOT OUTPUT (HASIL KODE ANDA YANG SALAH)]:\n${ft.got}\n` +
+        `-----------------------------------------\n\n`;
+    });
+
+    userText = `KODE PROGRAM SEBELUMNYA TELAH DIUJI, NAMUN ${failedTests.length} TEST CASE GAGAL!
+
+RINCIAN KEGAGALAN EXPECTED VS GOT:
+${failureDetails}
+
+KODE PROGRAM SEBELUMNYA YANG HARUS DIPERBAIKI:
+\`\`\`${lang || 'python'}
+${currentCode || starterCode}
+\`\`\`
+
+INSTRUKSI & ATURAN SOAL:
+${questionText}
+
+TUGAS:
+1. Perbaiki perbedaan antara Got Output dan Expected Output.
+2. Perbaiki kode agar menghasilkan output yang PERSIS sesuai dengan Expected Output pada seluruh test case.
+3. Kembalikan JSON dengan format { "code": "...", "explanation": "..." }.`;
+  } else {
+    userText = `SOAL DAN INSTRUKSI:\n${questionText}\n\nKODE STARTER:\n\`\`\`${lang || 'python'}\n${starterCode}\n\`\`\`\n\nLengkapi seluruh TODO dan kembalikan kode lengkap:`;
+  }
 
   const userContent = [];
   userContent.push({
     type: 'text',
-    text: `SOAL DAN INSTRUKSI:\n${questionText}\n\nKODE STARTER:\n\`\`\`${lang || 'python'}\n${starterCode}\n\`\`\`\n\nLengkapi seluruh TODO dan kembalikan kode lengkap:`
+    text: userText
   });
 
   if (images && images.length > 0) {
@@ -399,7 +471,8 @@ PENTING: Output Anda HARUS berupa JSON valid:
   const rawText = resJson.choices?.[0]?.message?.content;
   if (!rawText) throw new Error('Tidak ada respon teks dari model.');
 
-  return parseCodeRunnerResponse(rawText, model);
+  const isFix = !!(failedTests && failedTests.length > 0);
+  return parseCodeRunnerResponse(rawText, model, isFix);
 }
 
 /**
@@ -426,7 +499,7 @@ function parseJsonResponse(rawText, modelUsed) {
 /**
  * Parsing & Ekstraksi Solusi Koding CodeRunner
  */
-function parseCodeRunnerResponse(rawText, modelUsed) {
+function parseCodeRunnerResponse(rawText, modelUsed, isFix = false) {
   let cleaned = rawText.trim();
   let code = '';
   let explanation = '';
@@ -458,15 +531,16 @@ function parseCodeRunnerResponse(rawText, modelUsed) {
   // 3. Fallback jika output adalah kode mentah
   if (!code) {
     code = cleaned;
-    explanation = 'Solusi koding dari AI.';
+    explanation = isFix ? 'Kode perbaikan dari AI.' : 'Solusi koding dari AI.';
   }
 
   return {
     type: 'coderunner',
     code,
     explanation,
+    isFix,
     modelUsed,
-    confidence: 'Tinggi'
+    confidence: isFix ? 'Refined' : 'Tinggi'
   };
 }
 
