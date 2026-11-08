@@ -367,6 +367,27 @@
     const finishBanner = document.getElementById('ltensolver-finish-guard-banner');
     if (finishBanner) finishBanner.style.display = 'none';
 
+    // Cek jika halaman saat ini adalah hasil evaluasi CodeRunner yang sudah lulus
+    const testResults = document.querySelector('.coderunner-test-results');
+    if (testResults) {
+      const hasFailures = testResults.querySelector('.incorrect, .fail, .alert-danger, .badge-danger');
+      if (hasFailures) {
+        stopAutoLoop('Hasil Check CodeRunner: Ada test case yang belum lulus. Silakan periksa pesan error di tabel.');
+        btnSolve.classList.remove('loading');
+        return;
+      } else {
+        footerStatus.textContent = 'Semua test case lolos! Melanjutkan...';
+        footerStatus.style.color = '#34d399';
+        playChimeSound(880);
+
+        if (currentSettings.solveMode === 'auto') {
+          btnSolve.classList.remove('loading');
+          executeNextPageClick();
+          return;
+        }
+      }
+    }
+
     footerStatus.textContent = 'Membaca soal...';
     footerStatus.style.color = '#94a3b8';
 
@@ -401,7 +422,7 @@
       }
 
       retryCount = 0;
-      footerStatus.textContent = 'Menganalisis jawaban via AI...';
+      footerStatus.textContent = questionData.type === 'coderunner' ? 'Menyusun solusi koding via AI...' : 'Menganalisis jawaban via AI...';
 
       chrome.runtime.sendMessage(
         { action: 'solveQuestion', data: questionData },
@@ -531,6 +552,82 @@
     const qContainer = document.querySelector(adapter.questionContainer);
     if (!qContainer) return null;
 
+    // Deteksi apakah tipe soal adalah CodeRunner (koding / praktikum program)
+    const isCodeRunner = qContainer.classList.contains('coderunner') ||
+      !!qContainer.querySelector('textarea.coderunner-answer, textarea.edit_code, .ui_wrapper .ace_editor, table.coderunnerexamples');
+
+    if (isCodeRunner) {
+      return await extractCodeRunnerData(qContainer);
+    }
+
+    return await extractMultiChoiceData(qContainer);
+  }
+
+  /**
+   * Ekstraksi Soal Praktikum Koding (CodeRunner / Ace Editor)
+   */
+  async function extractCodeRunnerData(qContainer) {
+    const qTextEl = qContainer.querySelector(adapter.questionText || '.qtext');
+    let questionText = qTextEl ? qTextEl.innerText.trim() : '';
+
+    // Ambil contoh test case jika ada tabel coderunnerexamples
+    const exampleTable = qContainer.querySelector(adapter.codeExamples || 'table.coderunnerexamples, .coderunner-examples');
+    if (exampleTable) {
+      const rows = exampleTable.querySelectorAll('tbody tr');
+      if (rows.length > 0) {
+        let examplesText = '\n\nCONTOH TEST CASE:';
+        rows.forEach((r, idx) => {
+          const cells = r.querySelectorAll('td');
+          if (cells.length >= 2) {
+            examplesText += `\nTest ${idx + 1}:\nInput:\n${cells[0].innerText.trim()}\nExpected Result:\n${cells[1].innerText.trim()}\n---`;
+          }
+        });
+        questionText += examplesText;
+      }
+    }
+
+    // Ambil starter code dari reset button data-reload-text atau isi textarea
+    const textarea = qContainer.querySelector(adapter.codeEditor || 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]');
+    const resetBtn = qContainer.querySelector(adapter.codeResetBtn || 'input.answer_reset_btn');
+
+    let starterCode = '';
+    if (resetBtn && resetBtn.getAttribute('data-reload-text')) {
+      starterCode = resetBtn.getAttribute('data-reload-text').trim();
+    } else if (textarea && textarea.value && textarea.value.trim().length > 0) {
+      starterCode = textarea.value.trim();
+    }
+
+    const lang = (textarea ? textarea.getAttribute('data-lang') : '') || 'Python3';
+    const textareaId = textarea ? textarea.id : '';
+
+    const imgElements = qContainer.querySelectorAll(adapter.questionImages || '.qtext img');
+    const images = [];
+    for (const img of imgElements) {
+      if (img.src && !img.src.includes('theme/image.php') && !img.src.includes('pix.php')) {
+        try {
+          const base64Data = await convertImageToBase64(img.src);
+          if (base64Data) images.push(base64Data);
+        } catch {
+          // Lewati jika gagal
+        }
+      }
+    }
+
+    return {
+      type: 'coderunner',
+      container: qContainer,
+      questionText,
+      starterCode,
+      lang,
+      textareaId,
+      images
+    };
+  }
+
+  /**
+   * Ekstraksi Soal Pilihan Ganda (Multichoice)
+   */
+  async function extractMultiChoiceData(qContainer) {
     const qTextEl = qContainer.querySelector(adapter.questionText);
     const questionText = qTextEl ? qTextEl.innerText.trim() : '';
 
@@ -570,6 +667,7 @@
     });
 
     return {
+      type: 'multichoice',
       container: qContainer,
       questionText,
       options,
@@ -577,7 +675,15 @@
     };
   }
 
+  /**
+   * Menerapkan Jawaban (Bercabang: Koding vs Pilihan Ganda)
+   */
   async function applyAnswer(questionData, result) {
+    if (questionData.type === 'coderunner' || result.type === 'coderunner') {
+      await applyCodeRunnerAnswer(questionData, result);
+      return;
+    }
+
     const footerStatus = document.getElementById('ltensolver-footer-status');
     const targetIndex = result.index_jawaban;
     const targetOption = questionData.options[targetIndex] || questionData.options.find(
@@ -661,6 +767,135 @@
     } else {
       footerStatus.textContent = `Opsi ${result.huruf_jawaban} ditandai (Highlight Mode)`;
       footerStatus.style.color = '#34d399';
+    }
+  }
+
+  /**
+   * Menerapkan Solusi Koding ke Textarea & Ace Editor CodeRunner
+   */
+  async function applyCodeRunnerAnswer(questionData, result) {
+    const footerStatus = document.getElementById('ltensolver-footer-status');
+    const solutionCode = result.code || '';
+
+    if (!solutionCode) {
+      footerStatus.textContent = 'Kode jawaban kosong dari AI.';
+      footerStatus.style.color = '#f87171';
+      stopAutoLoop('Gagal mendapatkan kode solusi koding.');
+      return;
+    }
+
+    // Suntikkan kode ke Textarea dan Ace Editor
+    injectCodeToCodeRunner(questionData.textareaId, solutionCode);
+
+    // Sorot area editor dengan efek glow
+    const editorWrapper = document.querySelector('.ui_wrapper') || document.getElementById(questionData.textareaId);
+    if (editorWrapper) {
+      editorWrapper.classList.add('ltensolver-code-active');
+      editorWrapper.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    playChimeSound(660);
+
+    // Temukan tombol Check CodeRunner
+    const checkBtn = document.querySelector(adapter.checkButton || 'button.submit[name$="-submit"], input.submit[name$="-submit"], button[id$="-submit"]');
+
+    if (currentSettings.solveMode === 'auto') {
+      if (checkBtn) {
+        const minD = Math.max(1, currentSettings.minDelay);
+        const maxD = Math.max(minD, currentSettings.maxDelay);
+        const delaySec = Math.floor(Math.random() * (maxD - minD + 1) + minD);
+
+        let timeLeft = delaySec;
+        footerStatus.textContent = `Kode terisi. Menjalankan Check dalam ${timeLeft}s...`;
+        footerStatus.style.color = '#34d399';
+
+        if (activeCountdownTimer) clearInterval(activeCountdownTimer);
+
+        activeCountdownTimer = setInterval(() => {
+          timeLeft--;
+          if (timeLeft > 0) {
+            footerStatus.textContent = `Kode terisi. Menjalankan Check dalam ${timeLeft}s...`;
+          } else {
+            clearInterval(activeCountdownTimer);
+            activeCountdownTimer = null;
+            footerStatus.textContent = 'Menjalankan Check...';
+            // Klik tombol Check tepat satu kali
+            checkBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            checkBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            checkBtn.click();
+          }
+        }, 1000);
+      } else {
+        const nextBtn = findStrictNextButton();
+        if (nextBtn) {
+          executeNextPageClick();
+        } else {
+          checkAutoSubmitGuard();
+        }
+      }
+    } else {
+      footerStatus.textContent = 'Kode koding berhasil diisi. Silakan periksa lalu klik Check.';
+      footerStatus.style.color = '#34d399';
+    }
+  }
+
+  /**
+   * Injeksi kode ke textarea dan window.ace pada konteks halaman
+   */
+  function injectCodeToCodeRunner(textareaId, code) {
+    // 1. Set textarea langsung di Content Script context
+    const ta = (textareaId ? document.getElementById(textareaId) : null) ||
+      document.querySelector('textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]');
+    if (ta) {
+      ta.value = code;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+      ta.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // 2. Set Ace Editor di Page Execution context (window.ace)
+    try {
+      const script = document.createElement('script');
+      script.textContent = `
+        (function() {
+          try {
+            const tid = ${JSON.stringify(textareaId)};
+            const codeStr = ${JSON.stringify(code)};
+            const textarea = (tid ? document.getElementById(tid) : null) ||
+              document.querySelector('textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]');
+            
+            if (textarea) {
+              textarea.value = codeStr;
+              textarea.dispatchEvent(new Event('input', { bubbles: true }));
+              textarea.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            let aceContainer = null;
+            if (textarea && textarea.parentElement) {
+              aceContainer = textarea.parentElement.querySelector('.ace_editor');
+            }
+            if (!aceContainer) {
+              aceContainer = document.querySelector('.ui_wrapper .ace_editor, .ace_editor');
+            }
+
+            if (aceContainer && window.ace) {
+              const editor = window.ace.edit(aceContainer);
+              if (editor) {
+                editor.setValue(codeStr, -1);
+                editor.clearSelection();
+                if (editor.getSession() && editor.getSession().getUndoManager()) {
+                  editor.getSession().getUndoManager().markClean();
+                }
+              }
+            }
+          } catch(e) {
+            console.error('[LTenOd] Gagal sinkronisasi Ace Editor:', e);
+          }
+        })();
+      `;
+      (document.head || document.documentElement).appendChild(script);
+      script.remove();
+    } catch (err) {
+      console.warn('[LTenOd] Script injection error:', err);
     }
   }
 
@@ -764,8 +999,27 @@
     const descEl = document.getElementById('ltensolver-result-desc');
 
     resultBox.style.display = 'block';
-    choiceEl.textContent = `Jawaban: ${result.huruf_jawaban} - ${result.teks_jawaban || ''}`;
 
+    if (result.type === 'coderunner') {
+      choiceEl.textContent = 'Solusi Koding Siap';
+      confEl.textContent = 'Koding';
+      confEl.className = 'ltensolver-confidence-badge';
+
+      if (result.modelUsed) {
+        currentSettings.activeModel = result.modelUsed;
+        const modelBadge = document.getElementById('ltensolver-widget-model');
+        if (modelBadge) {
+          modelBadge.textContent = result.modelUsed;
+          modelBadge.title = `Model aktif: ${result.modelUsed}`;
+        }
+      }
+
+      const modelLabel = result.modelUsed ? ` • ${result.modelUsed}` : '';
+      descEl.textContent = `${result.explanation || 'Kode program berhasil diisikan ke editor CodeRunner.'}${modelLabel}`;
+      return;
+    }
+
+    choiceEl.textContent = `Jawaban: ${result.huruf_jawaban} - ${result.teks_jawaban || ''}`;
     confEl.textContent = result.confidence || 'Tinggi';
     confEl.className = 'ltensolver-confidence-badge';
 

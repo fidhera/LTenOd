@@ -2,6 +2,9 @@
  * LTenOd - Background Service Worker
  * Universal Multi-Provider Engine:
  * Mendukung Gemini Native, OpenRouter, DeepSeek, Groq, OpenAI, dan 9Router / Custom API.
+ * Fitur:
+ * - Soal Pilihan Ganda (Multichoice)
+ * - Soal Praktikum Koding (CodeRunner / Ace Editor)
  */
 
 const DEFAULT_GEMINI_KEY = 'AIzaSyDc5Rc25k1StZPVwBZfVZy_LsbAv-Z5A28';
@@ -106,20 +109,28 @@ async function handleSolveQuestion(data) {
     throw new Error('API Key belum diisi. Buka popup untuk memasukkan API Key.');
   }
 
-  const { questionText, options, images } = data;
-  const optionsFormatted = options.map((opt) => `${opt.letter}. ${opt.text}`).join('\n');
+  // Tipe 1: Soal Praktikum Koding (CodeRunner)
+  if (data.type === 'coderunner') {
+    if (provider === 'gemini') {
+      return await solveCodeRunnerWithGemini({ apiKey, model, ...data });
+    } else {
+      return await solveCodeRunnerWithOpenAICompatible({ baseUrl, apiKey, model, ...data });
+    }
+  }
 
-  // Jalur 1: Google Gemini Native API
+  // Tipe 2: Soal Pilihan Ganda (Multichoice)
+  const { questionText, options, images } = data;
+  const optionsFormatted = (options || []).map((opt) => `${opt.letter}. ${opt.text}`).join('\n');
+
   if (provider === 'gemini') {
     return await solveWithGeminiNative({ apiKey, model, questionText, optionsFormatted, images });
   }
 
-  // Jalur 2: OpenAI-Compatible / OpenRouter / DeepSeek / Groq / 9Router
   return await solveWithOpenAICompatible({ baseUrl, apiKey, model, questionText, optionsFormatted, images });
 }
 
 /**
- * Pemecah soal via Gemini Native
+ * Pemecah soal pilihan ganda via Gemini Native
  */
 async function solveWithGeminiNative({ apiKey, model, questionText, optionsFormatted, images }) {
   const userPrompt = `Soal kuis pilihan ganda:
@@ -184,7 +195,76 @@ Catatan: "index_jawaban" integer 0-based (A=0, B=1, C=2, D=3). "confidence": "ti
 }
 
 /**
- * Pemecah soal via Standar OpenAI / OpenRouter / DeepSeek / 9Router
+ * Pemecah soal koding (CodeRunner) via Google Gemini Native
+ */
+async function solveCodeRunnerWithGemini({ apiKey, model, questionText, starterCode, lang, images }) {
+  const userPrompt = `Anda adalah programmer expert untuk praktikum pemrograman (${lang || 'Python'}).
+Berikut instruksi soal praktikum dan starter code yang harus diselesaikan:
+
+INSTRUKSI & CONTOH TEST CASE:
+${questionText}
+
+KODE TEMPLATE / STARTER CODE:
+\`\`\`${lang || 'python'}
+${starterCode}
+\`\`\`
+
+TUGAS ANDA:
+1. Pahami aturan dan batasan soal dengan teliti (misal: dilarang import modul tertentu / regular expression, dilarang hardcode).
+2. Lengkapi SEMUA TODO yang ada di dalam kode starter sehingga lolos semua test case.
+3. Pertahankan nama fungsi, nama kelas, signature method, dan struktur yang sudah ada.
+4. Kembalikan HANYA JSON valid:
+{
+  "code": "seluruh isi kode program lengkap dari baris pertama sampai terakhir yang sudah siap pakai",
+  "explanation": "ringkasan singkat apa saja TODO yang telah diselesaikan"
+}`;
+
+  const parts = [{ text: userPrompt }];
+
+  if (images && images.length > 0) {
+    for (const img of images) {
+      if (img.data && img.mimeType) {
+        parts.push({
+          inlineData: {
+            mimeType: img.mimeType,
+            data: img.data
+          }
+        });
+      }
+    }
+  }
+
+  const payload = {
+    contents: [{ role: 'user', parts }],
+    generationConfig: {
+      temperature: 0.1,
+      maxOutputTokens: 4096,
+      responseMimeType: 'application/json'
+    }
+  };
+
+  const targetModel = model || 'gemini-3.5-flash-lite';
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`;
+
+  const response = await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }, 35000);
+
+  const resJson = await response.json();
+  if (!response.ok) {
+    throw new Error(resJson.error?.message || `HTTP ${response.status}`);
+  }
+
+  const rawText = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!rawText) throw new Error('Tidak ada respon teks dari model.');
+
+  return parseCodeRunnerResponse(rawText, targetModel);
+}
+
+/**
+ * Pemecah soal pilihan ganda via OpenAI-Compatible / 9Router
  */
 async function solveWithOpenAICompatible({ baseUrl, apiKey, model, questionText, optionsFormatted, images }) {
   if (!baseUrl) {
@@ -208,7 +288,6 @@ Catatan: "index_jawaban" adalah indeks integer 0-based dari pilihan (A=0, B=1, C
     text: `SOAL:\n${questionText}\n\nPILIHAN JAWABAN:\n${optionsFormatted}\n\nPilih jawaban paling tepat:`
   });
 
-  // Tambahkan gambar jika model vision mendukung (misal gpt-4o, claude, gemini via openrouter)
   if (images && images.length > 0) {
     for (const img of images) {
       if (img.data && img.mimeType) {
@@ -256,14 +335,80 @@ Catatan: "index_jawaban" adalah indeks integer 0-based dari pilihan (A=0, B=1, C
 }
 
 /**
- * Parsing & Sanitasi JSON
+ * Pemecah soal koding (CodeRunner) via OpenAI-Compatible / 9Router
+ */
+async function solveCodeRunnerWithOpenAICompatible({ baseUrl, apiKey, model, questionText, starterCode, lang, images }) {
+  if (!baseUrl) {
+    throw new Error('Base URL belum diisi untuk provider ini.');
+  }
+
+  const systemPrompt = `Anda adalah programmer expert untuk praktikum pemrograman (${lang || 'Python'}).
+Lengkapi seluruh TODO pada starter code yang diberikan sesuai instruksi soal.
+PENTING: Output Anda HARUS berupa JSON valid:
+{
+  "code": "seluruh isi kode program lengkap yang sudah selesai dikerjakan",
+  "explanation": "ringkasan singkat penyelesaian"
+}`;
+
+  const userContent = [];
+  userContent.push({
+    type: 'text',
+    text: `SOAL DAN INSTRUKSI:\n${questionText}\n\nKODE STARTER:\n\`\`\`${lang || 'python'}\n${starterCode}\n\`\`\`\n\nLengkapi seluruh TODO dan kembalikan kode lengkap:`
+  });
+
+  if (images && images.length > 0) {
+    for (const img of images) {
+      if (img.data && img.mimeType) {
+        userContent.push({
+          type: 'image_url',
+          image_url: {
+            url: `data:${img.mimeType};base64,${img.data}`
+          }
+        });
+      }
+    }
+  }
+
+  const payload = {
+    model: model || 'deepseek/deepseek-chat',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent.length === 1 ? userContent[0].text : userContent }
+    ],
+    temperature: 0.1,
+    max_tokens: 4096
+  };
+
+  const endpoint = `${baseUrl}/chat/completions`;
+  const response = await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://github.com/fidhera/LTenOd',
+      'X-Title': 'LTenOd'
+    },
+    body: JSON.stringify(payload)
+  }, 35000);
+
+  const resJson = await response.json();
+  if (!response.ok) {
+    throw new Error(resJson.error?.message || `HTTP ${response.status}`);
+  }
+
+  const rawText = resJson.choices?.[0]?.message?.content;
+  if (!rawText) throw new Error('Tidak ada respon teks dari model.');
+
+  return parseCodeRunnerResponse(rawText, model);
+}
+
+/**
+ * Parsing & Sanitasi JSON Pilihan Ganda
  */
 function parseJsonResponse(rawText, modelUsed) {
   let cleaned = rawText.trim();
-  // Bersihkan markdown ```json ... ```
   cleaned = cleaned.replace(/^```json/im, '').replace(/^```/im, '').replace(/```$/im, '').trim();
 
-  // Ekstrak blok JSON pertama jika ada teks pengantar
   const match = cleaned.match(/\{[\s\S]*\}/);
   if (match) {
     cleaned = match[0];
@@ -276,6 +421,53 @@ function parseJsonResponse(rawText, modelUsed) {
   } catch (e) {
     throw new Error(`Format output AI tidak valid: ${cleaned.slice(0, 80)}`);
   }
+}
+
+/**
+ * Parsing & Ekstraksi Solusi Koding CodeRunner
+ */
+function parseCodeRunnerResponse(rawText, modelUsed) {
+  let cleaned = rawText.trim();
+  let code = '';
+  let explanation = '';
+
+  // 1. Coba parse JSON standard
+  try {
+    const jsonCandidate = cleaned.replace(/^```json/im, '').replace(/^```/im, '').replace(/```$/im, '').trim();
+    const match = jsonCandidate.match(/\{[\s\S]*\}/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      if (parsed.code) {
+        code = parsed.code;
+        explanation = parsed.explanation || '';
+      }
+    }
+  } catch (e) {
+    // Abaikan kegagalan parse JSON
+  }
+
+  // 2. Jika kode belum didapat, cari code block ```python ... ```
+  if (!code) {
+    const blockMatch = rawText.match(/```(?:python3|python|py|c|cpp|java|javascript|js)?\s*([\s\S]*?)```/i);
+    if (blockMatch && blockMatch[1].trim()) {
+      code = blockMatch[1].trim();
+      explanation = 'Kode program diekstrak dari respon model.';
+    }
+  }
+
+  // 3. Fallback jika output adalah kode mentah
+  if (!code) {
+    code = cleaned;
+    explanation = 'Solusi koding dari AI.';
+  }
+
+  return {
+    type: 'coderunner',
+    code,
+    explanation,
+    modelUsed,
+    confidence: 'Tinggi'
+  };
 }
 
 /**
@@ -353,7 +545,6 @@ async function handleDetectModels({ provider, apiKey, baseUrl }) {
     throw new Error('Koneksi berhasil tetapi tidak ditemukan model aktif di akun/router ini.');
   }
 
-  // Filter model yang relevan (chat/instruct)
   const filtered = modelList.filter(id => {
     const s = id.toLowerCase();
     return !s.includes('embed') && !s.includes('whisper') && !s.includes('tts') && !s.includes('dall-e');

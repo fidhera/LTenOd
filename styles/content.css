@@ -325,3 +325,10 @@
   line-height: 1.4 !important;
   text-align: center !important;
 }
+
+/* CodeRunner Active Editor Glow */
+.ltensolver-code-active {
+  border: 2px solid #10b981 !important;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.45) !important;
+  transition: all 0.3s ease !important;
+}
