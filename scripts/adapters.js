@@ -13,6 +13,7 @@ const SITE_ADAPTERS = [
     match: (host, url) => host.includes('praktikum.gunadarma.ac.id') || (url && (
       url.includes('praktikum-ug-ac-id.html') ||
       url.includes('praktikum-ug-ngoding.html') ||
+      url.includes('praktikum-ug-ngoding-incorrect.html') ||
       url.includes('praktikum-tryagain.html') ||
       url.includes('praktikum-correct.html') ||
       url.includes('praktikum-incorrect.html')
@@ -21,7 +22,8 @@ const SITE_ADAPTERS = [
     questionText: '.qtext',
     questionImages: '.qtext img',
     codeEditor: 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]',
-    codeResetBtn: 'input.answer_reset_btn',
+    codeResetBtn: 'input.answer_reset_btn, input[name$="-resetbutton"], button[name$="-resetbutton"], input[value="Reset answer"]',
+    codeDiffBtn: 'input[name$="-diffbutton"], button[name$="-diffbutton"], input[value*="differences"]',
     codeExamples: '.coderunner-examples, table.coderunnerexamples',
     checkButton: 'input[name$="-submit"], button[name$="-submit"], input[id$="-submit"], button[id$="-submit"], input[value="Check"], button.submit',
     tryAgainButton: 'input[name$="-tryagain"], button[name$="-tryagain"], input[id$="-tryagain"], button[id$="-tryagain"], input[value="Try again"]',
@@ -40,7 +42,8 @@ const SITE_ADAPTERS = [
     questionText: '.qtext',
     questionImages: '.qtext img',
     codeEditor: 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]',
-    codeResetBtn: 'input.answer_reset_btn',
+    codeResetBtn: 'input.answer_reset_btn, input[name$="-resetbutton"], button[name$="-resetbutton"], input[value="Reset answer"]',
+    codeDiffBtn: 'input[name$="-diffbutton"], button[name$="-diffbutton"], input[value*="differences"]',
     codeExamples: '.coderunner-examples, table.coderunnerexamples',
     checkButton: 'input[name$="-submit"], button[name$="-submit"], input[id$="-submit"], button[id$="-submit"], input[value="Check"], button.submit',
     tryAgainButton: 'input[name$="-tryagain"], button[name$="-tryagain"], input[id$="-tryagain"], button[id$="-tryagain"], input[value="Try again"]',
@@ -59,7 +62,8 @@ const SITE_ADAPTERS = [
     questionText: '.qtext, .pertanyaan, .soal-text',
     questionImages: '.qtext img, .pertanyaan img',
     codeEditor: 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]',
-    codeResetBtn: 'input.answer_reset_btn',
+    codeResetBtn: 'input.answer_reset_btn, input[name$="-resetbutton"], button[name$="-resetbutton"], input[value="Reset answer"]',
+    codeDiffBtn: 'input[name$="-diffbutton"], button[name$="-diffbutton"], input[value*="differences"]',
     codeExamples: '.coderunner-examples, table.coderunnerexamples',
     checkButton: 'input[name$="-submit"], button[name$="-submit"], input[id$="-submit"], button[id$="-submit"], input[value="Check"], button.submit',
     tryAgainButton: 'input[name$="-tryagain"], button[name$="-tryagain"], input[id$="-tryagain"], button[id$="-tryagain"], input[value="Try again"]',
@@ -78,7 +82,8 @@ const SITE_ADAPTERS = [
     questionText: '.qtext',
     questionImages: '.qtext img',
     codeEditor: 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]',
-    codeResetBtn: 'input.answer_reset_btn',
+    codeResetBtn: 'input.answer_reset_btn, input[name$="-resetbutton"], button[name$="-resetbutton"], input[value="Reset answer"]',
+    codeDiffBtn: 'input[name$="-diffbutton"], button[name$="-diffbutton"], input[value*="differences"]',
     codeExamples: '.coderunner-examples, table.coderunnerexamples',
     checkButton: 'input[name$="-submit"], button[name$="-submit"], input[id$="-submit"], button[id$="-submit"], input[value="Check"], button.submit',
     tryAgainButton: 'input[name$="-tryagain"], button[name$="-tryagain"], input[id$="-tryagain"], button[id$="-tryagain"], input[value="Try again"]',

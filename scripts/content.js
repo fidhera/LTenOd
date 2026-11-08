@@ -464,6 +464,16 @@
           return;
         }
       } else if (isBad) {
+        // Klik tombol "Show differences" jika ada agar perbedaan Expected vs Got terlihat jelas
+        const diffBtn = document.querySelector(adapter.codeDiffBtn || 'input[name$="-diffbutton"], button[name$="-diffbutton"], input[value*="differences"]');
+        if (diffBtn && (diffBtn.value || '').toLowerCase().includes('show differences')) {
+          try {
+            diffBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            diffBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            diffBtn.click();
+          } catch(e) {}
+        }
+
         let codeRetries = parseInt(sessionStorage.getItem('ltensolver_code_retries') || '0', 10);
         if (codeRetries >= 5) {
           sessionStorage.removeItem('ltensolver_code_retries');
@@ -473,7 +483,7 @@
         }
         codeRetries++;
         sessionStorage.setItem('ltensolver_code_retries', String(codeRetries));
-        footerStatus.textContent = `Memperbaiki kode berdasarkan output test case (${codeRetries}/5)...`;
+        footerStatus.textContent = `Menganalisa perbedaan (Show diff) & memperbaiki kode (${codeRetries}/5)...`;
         footerStatus.style.color = '#f59e0b';
       }
     }
@@ -997,8 +1007,18 @@
       return;
     }
 
-    // Suntikkan kode ke Textarea dan Ace Editor
-    injectCodeToCodeRunner(questionData.textareaId, solutionCode);
+    const hasFailedTests = questionData.failedTests && questionData.failedTests.length > 0;
+    const shouldReset = hasFailedTests || result.isFix;
+
+    if (shouldReset) {
+      footerStatus.textContent = 'Mereset kodingan lama & memasukkan kode solusi perbaikan AI...';
+    } else {
+      footerStatus.textContent = 'Memasukkan kode solusi AI ke dalam editor...';
+    }
+    footerStatus.style.color = '#38bdf8';
+
+    // Suntikkan kode ke Textarea dan Ace Editor (dengan auto-reset jika sedang perbaikan)
+    injectCodeToCodeRunner(questionData.textareaId, solutionCode, shouldReset);
 
     // Sorot area editor dengan efek glow
     const editorWrapper = document.querySelector('.ui_wrapper') || document.getElementById(questionData.textareaId);
@@ -1053,9 +1073,10 @@
   }
 
   /**
-   * Injeksi kode ke textarea dan window.ace pada konteks halaman
+   * Injeksi kode ke textarea dan window.ace pada konteks halaman,
+   * dengan dukungan auto-reset tombol "Reset answer" (bypassing window.confirm).
    */
-  function injectCodeToCodeRunner(textareaId, code) {
+  function injectCodeToCodeRunner(textareaId, code, shouldReset = false) {
     // 1. Set textarea langsung di Content Script context
     const ta = (textareaId ? document.getElementById(textareaId) : null) ||
       document.querySelector('textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]');
@@ -1065,7 +1086,7 @@
       ta.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
-    // 2. Set Ace Editor di Page Execution context (window.ace)
+    // 2. Set Ace Editor di Page Execution context (window.ace) & Handle Reset jika ada
     try {
       const script = document.createElement('script');
       script.textContent = `
@@ -1073,35 +1094,59 @@
           try {
             const tid = ${JSON.stringify(textareaId)};
             const codeStr = ${JSON.stringify(code)};
-            const textarea = (tid ? document.getElementById(tid) : null) ||
-              document.querySelector('textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]');
+            const shouldReset = ${Boolean(shouldReset)};
             
-            if (textarea) {
-              textarea.value = codeStr;
-              textarea.dispatchEvent(new Event('input', { bubbles: true }));
-              textarea.dispatchEvent(new Event('change', { bubbles: true }));
-            }
+            function applyCode() {
+              const textarea = (tid ? document.getElementById(tid) : null) ||
+                document.querySelector('textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]');
+              
+              if (textarea) {
+                textarea.value = codeStr;
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                textarea.dispatchEvent(new Event('change', { bubbles: true }));
+              }
 
-            let aceContainer = null;
-            if (textarea && textarea.parentElement) {
-              aceContainer = textarea.parentElement.querySelector('.ace_editor');
-            }
-            if (!aceContainer) {
-              aceContainer = document.querySelector('.ui_wrapper .ace_editor, .ace_editor');
-            }
+              let aceContainer = null;
+              if (textarea && textarea.parentElement) {
+                aceContainer = textarea.parentElement.querySelector('.ace_editor');
+              }
+              if (!aceContainer) {
+                aceContainer = document.querySelector('.ui_wrapper .ace_editor, .ace_editor');
+              }
 
-            if (aceContainer && window.ace) {
-              const editor = window.ace.edit(aceContainer);
-              if (editor) {
-                editor.setValue(codeStr, -1);
-                editor.clearSelection();
-                if (editor.getSession() && editor.getSession().getUndoManager()) {
-                  editor.getSession().getUndoManager().markClean();
+              if (aceContainer && window.ace) {
+                const editor = window.ace.edit(aceContainer);
+                if (editor) {
+                  editor.setValue(codeStr, -1);
+                  editor.clearSelection();
+                  if (editor.getSession() && editor.getSession().getUndoManager()) {
+                    editor.getSession().getUndoManager().markClean();
+                  }
                 }
               }
             }
+
+            if (shouldReset) {
+              const resetBtn = document.querySelector('input.answer_reset_btn, input[name$="-resetbutton"], button[name$="-resetbutton"], input[value="Reset answer"]');
+              if (resetBtn) {
+                const origConfirm = window.confirm;
+                try {
+                  window.confirm = () => true;
+                  resetBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+                  resetBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+                  resetBtn.click();
+                } catch(re) {
+                  console.warn('[LTenOd] Reset button click error:', re);
+                } finally {
+                  window.confirm = origConfirm;
+                }
+              }
+            }
+
+            applyCode();
+            setTimeout(applyCode, 60);
           } catch(e) {
-            console.error('[LTenOd] Gagal sinkronisasi Ace Editor:', e);
+            console.error('[LTenOd] Gagal sinkronisasi Ace Editor / Reset:', e);
           }
         })();
       `;
@@ -1202,6 +1247,12 @@
 
     // Tolak tombol tryagain
     if (name.includes('tryagain') || id.includes('tryagain') || className.includes('tryagain') || value.includes('try again') || value.includes('coba lagi')) {
+      return false;
+    }
+
+    // Tolak tombol reset answer & show differences
+    if (name.includes('resetbutton') || id.includes('resetbutton') || className.includes('resetbutton') || className.includes('answer_reset_btn') || value.includes('reset answer') ||
+        name.includes('diffbutton') || id.includes('diffbutton') || className.includes('diffbutton') || value.includes('differences')) {
       return false;
     }
 
