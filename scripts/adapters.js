@@ -3,20 +3,28 @@
  * Mendukung multiple website praktikum dan kuis Gunadarma:
  * - Soal Pilihan Ganda (.que.multichoice)
  * - Soal Koding / Praktikum CodeRunner (.que.coderunner)
+ * - Mode Kuis Interaktif dengan Percobaan Ulang (Try Again / Adaptive)
  */
 
 const SITE_ADAPTERS = [
   {
     id: 'gundar-praktikum',
     name: 'Praktikum Gunadarma (iLab)',
-    match: (host, url) => host.includes('praktikum.gunadarma.ac.id') || (url && (url.includes('praktikum-ug-ac-id.html') || url.includes('praktikum-ug-ngoding.html'))),
+    match: (host, url) => host.includes('praktikum.gunadarma.ac.id') || (url && (
+      url.includes('praktikum-ug-ac-id.html') ||
+      url.includes('praktikum-ug-ngoding.html') ||
+      url.includes('praktikum-tryagain.html') ||
+      url.includes('praktikum-correct.html') ||
+      url.includes('praktikum-incorrect.html')
+    )),
     questionContainer: '.que.coderunner, .que.multichoice, .que',
     questionText: '.qtext',
     questionImages: '.qtext img',
     codeEditor: 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]',
     codeResetBtn: 'input.answer_reset_btn',
     codeExamples: '.coderunner-examples, table.coderunnerexamples',
-    checkButton: 'button.submit[name$="-submit"], input.submit[name$="-submit"], button[id$="-submit"], .im-controls button.submit',
+    checkButton: 'input[name$="-submit"], button[name$="-submit"], input[id$="-submit"], button[id$="-submit"], input[value="Check"], button.submit',
+    tryAgainButton: 'input[name$="-tryagain"], button[name$="-tryagain"], input[id$="-tryagain"], button[id$="-tryagain"], input[value="Try again"]',
     optionsContainer: '.answer',
     optionItems: '.answer .r0, .answer .r1, .answer > div:not(.qtype_multichoice_clearchoice)',
     optionInput: 'input[type="radio"], input[type="checkbox"]',
@@ -34,7 +42,8 @@ const SITE_ADAPTERS = [
     codeEditor: 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]',
     codeResetBtn: 'input.answer_reset_btn',
     codeExamples: '.coderunner-examples, table.coderunnerexamples',
-    checkButton: 'button.submit[name$="-submit"], input.submit[name$="-submit"], button[id$="-submit"], .im-controls button.submit',
+    checkButton: 'input[name$="-submit"], button[name$="-submit"], input[id$="-submit"], button[id$="-submit"], input[value="Check"], button.submit',
+    tryAgainButton: 'input[name$="-tryagain"], button[name$="-tryagain"], input[id$="-tryagain"], button[id$="-tryagain"], input[value="Try again"]',
     optionsContainer: '.answer',
     optionItems: '.answer .r0, .answer .r1, .answer > div:not(.qtype_multichoice_clearchoice)',
     optionInput: 'input[type="radio"], input[type="checkbox"]',
@@ -52,7 +61,8 @@ const SITE_ADAPTERS = [
     codeEditor: 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]',
     codeResetBtn: 'input.answer_reset_btn',
     codeExamples: '.coderunner-examples, table.coderunnerexamples',
-    checkButton: 'button.submit[name$="-submit"], input.submit[name$="-submit"], button[id$="-submit"], .im-controls button.submit',
+    checkButton: 'input[name$="-submit"], button[name$="-submit"], input[id$="-submit"], button[id$="-submit"], input[value="Check"], button.submit',
+    tryAgainButton: 'input[name$="-tryagain"], button[name$="-tryagain"], input[id$="-tryagain"], button[id$="-tryagain"], input[value="Try again"]',
     optionsContainer: '.answer, .pilihan-jawaban, .options',
     optionItems: '.answer .r0, .answer .r1, .pilihan-item, .answer > div:not(.qtype_multichoice_clearchoice)',
     optionInput: 'input[type="radio"], input[type="checkbox"]',
@@ -70,7 +80,8 @@ const SITE_ADAPTERS = [
     codeEditor: 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]',
     codeResetBtn: 'input.answer_reset_btn',
     codeExamples: '.coderunner-examples, table.coderunnerexamples',
-    checkButton: 'button.submit[name$="-submit"], input.submit[name$="-submit"], button[id$="-submit"], .im-controls button.submit',
+    checkButton: 'input[name$="-submit"], button[name$="-submit"], input[id$="-submit"], button[id$="-submit"], input[value="Check"], button.submit',
+    tryAgainButton: 'input[name$="-tryagain"], button[name$="-tryagain"], input[id$="-tryagain"], button[id$="-tryagain"], input[value="Try again"]',
     optionsContainer: '.answer',
     optionItems: '.answer .r0, .answer .r1, .answer > div:not(.qtype_multichoice_clearchoice)',
     optionInput: 'input[type="radio"]',

@@ -367,7 +367,80 @@
     const finishBanner = document.getElementById('ltensolver-finish-guard-banner');
     if (finishBanner) finishBanner.style.display = 'none';
 
-    // Cek jika halaman saat ini adalah hasil evaluasi CodeRunner
+    const qContainer = document.querySelector(adapter.questionContainer);
+
+    // =========================================================================
+    // 1. CEK APAKAH SOAL SAAT INI SUDAH BENAR (CORRECT)
+    // =========================================================================
+    if (qContainer) {
+      const isCorrect = qContainer.classList.contains('correct') ||
+        (qContainer.querySelector('.state')?.innerText || '').toLowerCase().includes('correct') ||
+        (!!qContainer.querySelector('.fa-circle-check.text-success') && !qContainer.querySelector('.fa-circle-xmark.text-danger'));
+
+      if (isCorrect) {
+        clearEliminatedOptions(qContainer);
+        sessionStorage.removeItem('ltensolver_code_retries');
+        footerStatus.textContent = 'Jawaban BENAR (Correct)! Melanjutkan ke soal berikutnya...';
+        footerStatus.style.color = '#34d399';
+        playChimeSound(880);
+
+        if (currentSettings.solveMode === 'auto') {
+          btnSolve.classList.remove('loading');
+          setTimeout(() => executeNextPageClick(), 1000);
+          return;
+        } else {
+          btnSolve.classList.remove('loading');
+          return;
+        }
+      }
+
+      // =======================================================================
+      // 2. CEK APAKAH ADA TOMBOL "TRY AGAIN" (JAWABAN SALAH & ADA KESEMPATAN)
+      // =======================================================================
+      const tryAgainBtn = document.querySelector(adapter.tryAgainButton || 'input[name$="-tryagain"], input[value="Try again"], button.tryagain');
+      if (tryAgainBtn) {
+        recordWrongOptionFromDom(qContainer);
+
+        footerStatus.textContent = 'Jawaban salah. Menekan Try again untuk mencoba pilihan lain...';
+        footerStatus.style.color = '#f59e0b';
+        playChimeSound(440);
+
+        btnSolve.classList.remove('loading');
+        setTimeout(() => {
+          tryAgainBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+          tryAgainBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+          tryAgainBtn.click();
+        }, 800);
+        return;
+      }
+
+      // =======================================================================
+      // 3. CEK APAKAH SOAL FINAL INCORRECT (KESEMPATAN MENCOBA HABIS)
+      // =======================================================================
+      const isFinalIncorrect = (
+        qContainer.classList.contains('incorrect') ||
+        (qContainer.querySelector('.state')?.innerText || '').toLowerCase().includes('incorrect')
+      ) && !tryAgainBtn && !document.querySelector('.coderunner-test-results');
+
+      if (isFinalIncorrect) {
+        clearEliminatedOptions(qContainer);
+        footerStatus.textContent = 'Kesempatan menjawab telah habis. Melanjutkan ke soal berikutnya...';
+        footerStatus.style.color = '#f87171';
+
+        if (currentSettings.solveMode === 'auto') {
+          btnSolve.classList.remove('loading');
+          setTimeout(() => executeNextPageClick(), 1500);
+          return;
+        } else {
+          btnSolve.classList.remove('loading');
+          return;
+        }
+      }
+    }
+
+    // =========================================================================
+    // 4. CEK HASIL EVALUASI CODERUNNER (KODING)
+    // =========================================================================
     const testResults = document.querySelector('.coderunner-test-results');
     const isCodeRunnerQuestion = !!document.querySelector('.que.coderunner, textarea.coderunner-answer, .ui_wrapper .ace_editor');
 
@@ -377,7 +450,6 @@
         !!testResults.querySelector('.text-danger, .fa-circle-xmark, [title*="Incorrect"]');
 
       if (!isBad && testResults.querySelector('.text-success, .fa-circle-check, [title*="Correct"]')) {
-        // SEMUA TEST CASE LOLOS 100%!
         sessionStorage.removeItem('ltensolver_code_retries');
         footerStatus.textContent = 'Semua test case lolos 100%! Melanjutkan ke soal berikutnya...';
         footerStatus.style.color = '#34d399';
@@ -392,8 +464,6 @@
           return;
         }
       } else if (isBad) {
-        // ADA TEST CASE GAGAL: JANGAN KLIK NEXT PAGE!
-        // AI akan menganalisis perbandingan Expected vs Got dan memperbaiki kodenya
         let codeRetries = parseInt(sessionStorage.getItem('ltensolver_code_retries') || '0', 10);
         if (codeRetries >= 5) {
           sessionStorage.removeItem('ltensolver_code_retries');
@@ -692,6 +762,51 @@
   }
 
   /**
+   * Helper Penyimpanan Opsi Tereliminasi (Memory Learning AI)
+   */
+  function getQuestionKey(qContainer) {
+    if (!qContainer) return 'default_q';
+    return (qContainer.id || document.querySelector('input[name="slots"]')?.value || 'slot') + '_' + (document.querySelector('input[name="attempt"]')?.value || '');
+  }
+
+  function recordWrongOptionFromDom(qContainer) {
+    try {
+      const checkedInput = qContainer.querySelector('input[type="radio"]:checked, input[type="checkbox"]:checked');
+      if (!checkedInput) return;
+
+      const parentItem = checkedInput.closest(adapter.optionItems || '.r0, .r1, .answer > div');
+      const label = parentItem ? (parentItem.querySelector(adapter.optionLabel) || parentItem) : null;
+      let text = label ? label.innerText.trim() : checkedInput.value;
+      text = text.replace(/^[a-eA-E][.)\s-]+/, '').trim();
+
+      const key = 'ltensolver_eliminated_' + getQuestionKey(qContainer);
+      const existing = JSON.parse(sessionStorage.getItem(key) || '[]');
+      if (text && !existing.includes(text)) {
+        existing.push(text);
+        sessionStorage.setItem(key, JSON.stringify(existing));
+      }
+    } catch (e) {
+      console.warn('[LTenOd] Gagal menyimpan opsi tereliminasi:', e);
+    }
+  }
+
+  function getEliminatedOptions(qContainer) {
+    try {
+      const key = 'ltensolver_eliminated_' + getQuestionKey(qContainer);
+      return JSON.parse(sessionStorage.getItem(key) || '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  function clearEliminatedOptions(qContainer) {
+    try {
+      const key = 'ltensolver_eliminated_' + getQuestionKey(qContainer);
+      sessionStorage.removeItem(key);
+    } catch {}
+  }
+
+  /**
    * Ekstraksi Soal Pilihan Ganda (Multichoice)
    */
   async function extractMultiChoiceData(qContainer) {
@@ -733,11 +848,14 @@
       });
     });
 
+    const eliminatedOptions = getEliminatedOptions(qContainer);
+
     return {
       type: 'multichoice',
       container: qContainer,
       questionText,
       options,
+      eliminatedOptions,
       images
     };
   }
@@ -783,30 +901,8 @@
     // Langsung centang opsi
     selectOptionReliably(targetOption);
 
-    // Cek apakah ini soal terakhir (Tombol navigasi bertuliskan "Finish attempt ..." atau tidak ada tombol Next)
-    const nextBtn = findStrictNextButton();
-    const isFinishStep = !nextBtn || (
-      (nextBtn.value || '').toLowerCase().includes('finish') ||
-      (nextBtn.value || '').toLowerCase().includes('selesai')
-    );
-
-    if (isFinishStep) {
-      stopAutoLoop('Semua soal telah selesai dijawab.');
-      playChimeSound(660);
-
-      const finishBanner = document.getElementById('ltensolver-finish-guard-banner');
-      if (finishBanner) {
-        finishBanner.style.display = 'block';
-        finishBanner.innerHTML = `
-          <b>🎉 Semua Soal Telah Selesai Dijawab!</b><br>
-          Jawaban soal terakhir (<strong>${result.huruf_jawaban}</strong>) telah dipilih dan dicentang. Ekstensi menahan auto-submit agar Anda dapat memeriksa jawaban. Klik <strong>Finish attempt</strong> di bawah untuk mengumpulkan kuis.
-        `;
-      }
-
-      footerStatus.textContent = 'Kuis selesai. Silakan periksa & kumpulkan.';
-      footerStatus.style.color = '#34d399';
-      return;
-    }
+    // Cari tombol Check jika tersedia pada tipe soal interactive / adaptive
+    const checkBtn = document.querySelector(adapter.checkButton || 'input[name$="-submit"], button[name$="-submit"], input[id$="-submit"], button[id$="-submit"], input[value="Check"]');
 
     // Mode Otomatis (Lepas Tangan Penuh - Tanpa Jeda Ragu)
     if (currentSettings.solveMode === 'auto') {
@@ -815,24 +911,74 @@
       const delaySec = Math.floor(Math.random() * (maxD - minD + 1) + minD);
 
       let timeLeft = delaySec;
-      footerStatus.textContent = `Lanjut otomatis dalam ${timeLeft}s...`;
-      footerStatus.style.color = '#34d399';
 
-      if (activeCountdownTimer) clearInterval(activeCountdownTimer);
+      if (checkBtn) {
+        footerStatus.textContent = `Jawaban ${result.huruf_jawaban} dipilih. Menjalankan Check dalam ${timeLeft}s...`;
+        footerStatus.style.color = '#34d399';
 
-      activeCountdownTimer = setInterval(() => {
-        timeLeft--;
-        if (timeLeft > 0) {
-          footerStatus.textContent = `Lanjut otomatis dalam ${timeLeft}s...`;
-        } else {
-          clearInterval(activeCountdownTimer);
-          activeCountdownTimer = null;
-          executeNextPageClick();
+        if (activeCountdownTimer) clearInterval(activeCountdownTimer);
+
+        activeCountdownTimer = setInterval(() => {
+          timeLeft--;
+          if (timeLeft > 0) {
+            footerStatus.textContent = `Jawaban ${result.huruf_jawaban} dipilih. Menjalankan Check dalam ${timeLeft}s...`;
+          } else {
+            clearInterval(activeCountdownTimer);
+            activeCountdownTimer = null;
+            footerStatus.textContent = 'Menjalankan Check...';
+            checkBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            checkBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            checkBtn.click();
+          }
+        }, 1000);
+      } else {
+        const nextBtn = findStrictNextButton();
+        const isFinishStep = !nextBtn || (
+          (nextBtn.value || '').toLowerCase().includes('finish') ||
+          (nextBtn.value || '').toLowerCase().includes('selesai')
+        );
+
+        if (isFinishStep) {
+          stopAutoLoop('Semua soal telah selesai dijawab.');
+          playChimeSound(660);
+
+          const finishBanner = document.getElementById('ltensolver-finish-guard-banner');
+          if (finishBanner) {
+            finishBanner.style.display = 'block';
+            finishBanner.innerHTML = `
+              <b>🎉 Semua Soal Telah Selesai Dijawab!</b><br>
+              Jawaban soal terakhir (<strong>${result.huruf_jawaban}</strong>) telah dipilih dan dicentang. Ekstensi menahan auto-submit agar Anda dapat memeriksa jawaban. Klik <strong>Finish attempt</strong> di bawah untuk mengumpulkan kuis.
+            `;
+          }
+
+          footerStatus.textContent = 'Kuis selesai. Silakan periksa & kumpulkan.';
+          footerStatus.style.color = '#34d399';
+          return;
         }
-      }, 1000);
+
+        footerStatus.textContent = `Lanjut otomatis dalam ${timeLeft}s...`;
+        footerStatus.style.color = '#34d399';
+
+        if (activeCountdownTimer) clearInterval(activeCountdownTimer);
+
+        activeCountdownTimer = setInterval(() => {
+          timeLeft--;
+          if (timeLeft > 0) {
+            footerStatus.textContent = `Lanjut otomatis dalam ${timeLeft}s...`;
+          } else {
+            clearInterval(activeCountdownTimer);
+            activeCountdownTimer = null;
+            executeNextPageClick();
+          }
+        }, 1000);
+      }
 
     } else {
-      footerStatus.textContent = `Opsi ${result.huruf_jawaban} ditandai (Highlight Mode)`;
+      if (checkBtn) {
+        footerStatus.textContent = `Opsi ${result.huruf_jawaban} dipilih. Silakan klik Check.`;
+      } else {
+        footerStatus.textContent = `Opsi ${result.huruf_jawaban} ditandai (Highlight Mode)`;
+      }
       footerStatus.style.color = '#34d399';
     }
   }
@@ -988,6 +1134,13 @@
       }
     }
 
+    // GUARD INTERACTIVE QUIZ: Jangan pernah klik Next Page jika tombol "Try again" aktif
+    const tryAgainBtn = document.querySelector(adapter.tryAgainButton || 'input[name$="-tryagain"], input[value="Try again"], button.tryagain');
+    if (tryAgainBtn) {
+      console.warn('[LTenOd] Menahan Next Page: Masih ada kesempatan mencoba ulang (Try again).');
+      return;
+    }
+
     const footerStatus = document.getElementById('ltensolver-footer-status');
     const nextBtn = findStrictNextButton();
 
@@ -1044,6 +1197,11 @@
 
     // Tolak tombol check single
     if (id.includes('-submit') && !id.includes('next')) {
+      return false;
+    }
+
+    // Tolak tombol tryagain
+    if (name.includes('tryagain') || id.includes('tryagain') || className.includes('tryagain') || value.includes('try again') || value.includes('coba lagi')) {
       return false;
     }
 

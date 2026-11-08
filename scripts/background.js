@@ -119,27 +119,34 @@ async function handleSolveQuestion(data) {
   }
 
   // Tipe 2: Soal Pilihan Ganda (Multichoice)
-  const { questionText, options, images } = data;
+  const { questionText, options, images, eliminatedOptions } = data;
   const optionsFormatted = (options || []).map((opt) => `${opt.letter}. ${opt.text}`).join('\n');
 
   if (provider === 'gemini') {
-    return await solveWithGeminiNative({ apiKey, model, questionText, optionsFormatted, images });
+    return await solveWithGeminiNative({ apiKey, model, questionText, optionsFormatted, images, eliminatedOptions });
   }
 
-  return await solveWithOpenAICompatible({ baseUrl, apiKey, model, questionText, optionsFormatted, images });
+  return await solveWithOpenAICompatible({ baseUrl, apiKey, model, questionText, optionsFormatted, images, eliminatedOptions });
 }
 
 /**
  * Pemecah soal pilihan ganda via Gemini Native
  */
-async function solveWithGeminiNative({ apiKey, model, questionText, optionsFormatted, images }) {
+async function solveWithGeminiNative({ apiKey, model, questionText, optionsFormatted, images, eliminatedOptions }) {
+  let warningEliminated = '';
+  if (eliminatedOptions && eliminatedOptions.length > 0) {
+    warningEliminated = `\nPERHATIAN - OPSI BERIKUT SUDAH DICOBA DAN SALAH (ELIMINASI):\n` +
+      eliminatedOptions.map(o => `- ${o}`).join('\n') +
+      `\nDILARANG MEMILIH OPSI DI ATAS! Pilihlah dari opsi lain yang tersisa!\n`;
+  }
+
   const userPrompt = `Soal kuis pilihan ganda:
 SOAL:
 ${questionText}
 
 PILIHAN:
 ${optionsFormatted}
-
+${warningEliminated}
 Kembalikan HANYA JSON:
 {
   "index_jawaban": 0,
@@ -305,7 +312,7 @@ TUGAS ANDA:
 /**
  * Pemecah soal pilihan ganda via OpenAI-Compatible / 9Router
  */
-async function solveWithOpenAICompatible({ baseUrl, apiKey, model, questionText, optionsFormatted, images }) {
+async function solveWithOpenAICompatible({ baseUrl, apiKey, model, questionText, optionsFormatted, images, eliminatedOptions }) {
   if (!baseUrl) {
     throw new Error('Base URL belum diisi untuk provider ini.');
   }
@@ -321,10 +328,17 @@ PENTING: Jawaban Anda HARUS HANYA berupa JSON valid tanpa tanda pembungkus markd
 }
 Catatan: "index_jawaban" adalah indeks integer 0-based dari pilihan (A=0, B=1, C=2, D=3).`;
 
+  let warningEliminated = '';
+  if (eliminatedOptions && eliminatedOptions.length > 0) {
+    warningEliminated = `\nPERHATIAN - OPSI BERIKUT SUDAH DICOBA DAN SALAH (ELIMINASI):\n` +
+      eliminatedOptions.map(o => `- ${o}`).join('\n') +
+      `\nDILARANG MEMILIH OPSI DI ATAS! Pilihlah dari opsi lain yang tersisa!\n`;
+  }
+
   const userContent = [];
   userContent.push({
     type: 'text',
-    text: `SOAL:\n${questionText}\n\nPILIHAN JAWABAN:\n${optionsFormatted}\n\nPilih jawaban paling tepat:`
+    text: `SOAL:\n${questionText}\n\nPILIHAN JAWABAN:\n${optionsFormatted}\n${warningEliminated}\nPilih jawaban paling tepat:`
   });
 
   if (images && images.length > 0) {
