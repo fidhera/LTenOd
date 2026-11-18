@@ -1102,9 +1102,27 @@
     let selectedCount = 0;
 
     for (const match of matches) {
-      const itemData = questionData.items[match.index] || questionData.items.find(
-        it => it.itemText.toLowerCase() === (match.itemText || '').toLowerCase()
-      );
+      let itemData = null;
+
+      // 1. Prioritaskan pencocokan berdasarkan itemText (paling aman & presisi menghindari off-by-one index)
+      if (match.itemText) {
+        const matchText = match.itemText.trim().toLowerCase();
+        itemData = questionData.items.find(it => {
+          const itText = it.itemText.trim().toLowerCase();
+          return itText === matchText || itText.includes(matchText) || matchText.includes(itText);
+        });
+      }
+
+      // 2. Fallback ke index jika teks tidak cocok (dukung baik 0-based maupun 1-based index)
+      if (!itemData && match.index !== undefined && match.index !== null) {
+        const rawIdx = parseInt(match.index, 10);
+        if (questionData.items[rawIdx]) {
+          itemData = questionData.items[rawIdx];
+        } else if (questionData.items[rawIdx - 1]) {
+          itemData = questionData.items[rawIdx - 1];
+        }
+      }
+
       if (!itemData) continue;
 
       const selectEl = itemData.selectElement ||

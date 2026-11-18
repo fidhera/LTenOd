@@ -571,7 +571,7 @@ function parseCodeRunnerResponse(rawText, modelUsed, isFix = false) {
  * Pemecah soal mencocokkan kata/konsep (Matching) via Google Gemini Native
  */
 async function solveMatchingWithGemini({ apiKey, model, questionText, items, images }) {
-  const itemsText = (items || []).map((it, idx) => `${idx + 1}. [${it.itemText}]`).join('\n');
+  const itemsText = (items || []).map((it, idx) => `Item ${it.index}: "${it.itemText}"`).join('\n');
 
   let optionsText = '';
   if (items && items.length > 0 && items[0].options) {
@@ -590,13 +590,19 @@ ${optionsText}
 
 TUGAS:
 Cocokkan SETIAP kata/pertanyaan di atas dengan pilihan jawaban yang paling tepat.
-PENTING: Kembalikan HANYA format JSON valid tanpa teks atau markdown pembungkus:
+PENTING:
+- "index": integer 0-based sesuai nomor Item di atas (0 untuk item pertama, 1 untuk item kedua, dst).
+- "itemText": teks kata yang dicocokkan persis sesuai daftar.
+- "chosenValue": nilai atribut value dari opsi yang dipilih pada elemen select (misal: "1", "2", dst).
+- "chosenText": teks lengkap opsi yang dipilih.
+
+Kembalikan HANYA format JSON valid tanpa teks atau markdown pembungkus:
 {
   "matches": [
     {
       "index": 0,
       "itemText": "kata yang dicocokkan",
-      "chosenValue": "nilai value dari opsi (misal: '1', '2', dst)",
+      "chosenValue": "nilai value dari opsi",
       "chosenText": "teks lengkap opsi yang dipilih"
     }
   ]
@@ -654,7 +660,7 @@ async function solveMatchingWithOpenAICompatible({ baseUrl, apiKey, model, quest
     throw new Error('Base URL belum diisi untuk provider ini.');
   }
 
-  const itemsText = (items || []).map((it, idx) => `${idx + 1}. [${it.itemText}]`).join('\n');
+  const itemsText = (items || []).map((it, idx) => `Item ${it.index}: "${it.itemText}"`).join('\n');
 
   let optionsText = '';
   if (items && items.length > 0 && items[0].options) {
@@ -662,7 +668,7 @@ async function solveMatchingWithOpenAICompatible({ baseUrl, apiKey, model, quest
   }
 
   const systemPrompt = `Anda adalah asisten cerdas untuk menyelesaikan soal mencocokkan kata/konsep (Matching Question).
-Output Anda HARUS berupa JSON valid tanpa teks atau markdown pembungkus:
+Format output HARUS berupa JSON valid tanpa teks lain:
 {
   "matches": [
     {
@@ -683,7 +689,15 @@ ${itemsText}
 PILIHAN JAWABAN PADA DROPDOWN (Setiap item memilih satu yang paling tepat):
 ${optionsText}
 
-Cocokkan SETIAP kata di atas dengan pilihan jawaban yang paling tepat. Kembalikan JSON:`;
+TUGAS:
+Cocokkan SETIAP kata di atas dengan pilihan jawaban yang paling tepat.
+PENTING:
+- "index": integer 0-based sesuai nomor Item di atas (0 untuk item pertama, 1 untuk item kedua, dst).
+- "itemText": teks kata yang dicocokkan persis sesuai daftar.
+- "chosenValue": nilai atribut value dari opsi yang dipilih pada elemen select.
+- "chosenText": teks lengkap opsi yang dipilih.
+
+Kembalikan JSON:`;
 
   const userContent = [];
   userContent.push({ type: 'text', text: userText });
