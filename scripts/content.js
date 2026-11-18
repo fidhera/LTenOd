@@ -527,6 +527,8 @@
         footerStatus.textContent = isFixingCode ?
           'Memperbaiki kode via AI (menganalisis Expected vs Got)...' :
           'Menyusun solusi koding via AI...';
+      } else if (questionData.type === 'matching') {
+        footerStatus.textContent = `Mencocokkan ${questionData.items.length} pasangan jawaban via AI...`;
       } else {
         footerStatus.textContent = 'Menganalisis jawaban via AI...';
       }
@@ -659,7 +661,7 @@
     const qContainer = document.querySelector(adapter.questionContainer);
     if (!qContainer) return null;
 
-    // Deteksi apakah tipe soal adalah CodeRunner (koding / praktikum program)
+    // 1. Deteksi apakah tipe soal adalah CodeRunner (koding / praktikum program)
     const isCodeRunner = qContainer.classList.contains('coderunner') ||
       !!qContainer.querySelector('textarea.coderunner-answer, textarea.edit_code, .ui_wrapper .ace_editor, table.coderunnerexamples');
 
@@ -667,7 +669,85 @@
       return await extractCodeRunnerData(qContainer);
     }
 
+    // 2. Deteksi apakah tipe soal adalah Matching (mencocokkan pasangan / dropdown per baris)
+    const isMatching = qContainer.classList.contains('match') ||
+      !!qContainer.querySelector('table.answer select, td.control select, .ablock table select');
+
+    if (isMatching) {
+      return await extractMatchingData(qContainer);
+    }
+
+    // 3. Soal Pilihan Ganda (Multichoice)
     return await extractMultiChoiceData(qContainer);
+  }
+
+  /**
+   * Ekstraksi Soal Mencocokkan Pasangan (Matching / Dropdown per baris Moodle)
+   */
+  async function extractMatchingData(qContainer) {
+    const qTextEl = qContainer.querySelector(adapter.questionText || '.qtext');
+    const questionText = qTextEl ? qTextEl.innerText.trim() : '';
+
+    const imgElements = qContainer.querySelectorAll(adapter.questionImages || '.qtext img');
+    const images = [];
+    for (const img of imgElements) {
+      if (img.src && !img.src.includes('theme/image.php') && !img.src.includes('pix.php')) {
+        try {
+          const base64Data = await convertImageToBase64(img.src);
+          if (base64Data) images.push(base64Data);
+        } catch {
+          // Lewati jika gagal
+        }
+      }
+    }
+
+    const rows = qContainer.querySelectorAll('table.answer tr, .ablock table tr, tr.r0, tr.r1');
+    const items = [];
+
+    rows.forEach((row) => {
+      const selectEl = row.querySelector('select');
+      if (!selectEl) return;
+
+      const textEl = row.querySelector('td.text, th.text, .itemtext, td:first-child');
+      let itemText = textEl ? textEl.innerText.trim() : '';
+      if (!itemText) {
+        const clone = row.cloneNode(true);
+        clone.querySelectorAll('select, label, .visually-hidden, button').forEach(el => el.remove());
+        itemText = clone.innerText.trim();
+      }
+
+      const options = [];
+      Array.from(selectEl.options).forEach((opt) => {
+        const val = opt.value;
+        const txt = opt.text.trim();
+        if (val === '0' || val === '' || txt.toLowerCase().startsWith('choose') || txt.toLowerCase().startsWith('pilih')) {
+          return;
+        }
+        options.push({
+          value: val,
+          text: txt
+        });
+      });
+
+      if (itemText && options.length > 0) {
+        items.push({
+          index: items.length,
+          subName: selectEl.name || selectEl.id,
+          id: selectEl.id,
+          itemText: itemText,
+          selectElement: selectEl,
+          options: options
+        });
+      }
+    });
+
+    return {
+      type: 'matching',
+      container: qContainer,
+      questionText: questionText,
+      items: items,
+      images: images
+    };
   }
 
   /**
@@ -871,11 +951,16 @@
   }
 
   /**
-   * Menerapkan Jawaban (Bercabang: Koding vs Pilihan Ganda)
+   * Menerapkan Jawaban (Bercabang: Koding vs Matching vs Pilihan Ganda)
    */
   async function applyAnswer(questionData, result) {
     if (questionData.type === 'coderunner' || result.type === 'coderunner') {
       await applyCodeRunnerAnswer(questionData, result);
+      return;
+    }
+
+    if (questionData.type === 'matching' || result.type === 'matching') {
+      await applyMatchingAnswer(questionData, result);
       return;
     }
 
@@ -989,6 +1074,149 @@
       } else {
         footerStatus.textContent = `Opsi ${result.huruf_jawaban} ditandai (Highlight Mode)`;
       }
+      footerStatus.style.color = '#34d399';
+    }
+  }
+
+  /**
+   * Menerapkan Jawaban Soal Mencocokkan Pasangan (Matching / Dropdown per baris)
+   */
+  async function applyMatchingAnswer(questionData, result) {
+    const footerStatus = document.getElementById('ltensolver-footer-status');
+    const matches = result.matches || [];
+
+    if (!matches || matches.length === 0) {
+      footerStatus.textContent = 'Gagal mendapatkan pasangan jawaban dari AI.';
+      footerStatus.style.color = '#f87171';
+      stopAutoLoop('Gagal mencocokkan jawaban.');
+      return;
+    }
+
+    // Bersihkan highlight lama
+    document.querySelectorAll('.ltensolver-highlighted-choice').forEach(el => {
+      el.classList.remove('ltensolver-highlighted-choice');
+      const badge = el.querySelector('.ltensolver-choice-badge');
+      if (badge) badge.remove();
+    });
+
+    let selectedCount = 0;
+
+    for (const match of matches) {
+      const itemData = questionData.items[match.index] || questionData.items.find(
+        it => it.itemText.toLowerCase() === (match.itemText || '').toLowerCase()
+      );
+      if (!itemData) continue;
+
+      const selectEl = itemData.selectElement ||
+        document.querySelector(`select[name="${itemData.subName}"]`) ||
+        (itemData.id ? document.getElementById(itemData.id) : null);
+      if (!selectEl) continue;
+
+      let targetOption = null;
+      if (match.chosenValue !== undefined && match.chosenValue !== null) {
+        targetOption = Array.from(selectEl.options).find(opt => String(opt.value) === String(match.chosenValue));
+      }
+
+      if (!targetOption && match.chosenText) {
+        const cleanChosen = match.chosenText.trim().toLowerCase();
+        targetOption = Array.from(selectEl.options).find(opt => {
+          const optText = opt.text.trim().toLowerCase();
+          return optText === cleanChosen || optText.includes(cleanChosen) || cleanChosen.includes(optText);
+        });
+      }
+
+      if (targetOption) {
+        selectEl.value = targetOption.value;
+        selectEl.dispatchEvent(new Event('focus', { bubbles: true }));
+        selectEl.dispatchEvent(new Event('input', { bubbles: true }));
+        selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+        selectEl.dispatchEvent(new Event('blur', { bubbles: true }));
+
+        const tr = selectEl.closest('tr') || selectEl.parentElement;
+        if (tr) {
+          tr.classList.add('ltensolver-highlighted-choice');
+          const badge = document.createElement('span');
+          badge.className = 'ltensolver-choice-badge';
+          badge.textContent = `✓ ${targetOption.text.split('.')[0] || targetOption.text.slice(0, 15)}`;
+          tr.appendChild(badge);
+        }
+        selectedCount++;
+      }
+    }
+
+    playChimeSound(660);
+
+    const checkBtn = document.querySelector(adapter.checkButton || 'input[name$="-submit"], button[name$="-submit"], input[id$="-submit"], button[id$="-submit"], input[value="Check"]');
+
+    if (currentSettings.solveMode === 'auto') {
+      const minD = Math.max(1, currentSettings.minDelay);
+      const maxD = Math.max(minD, currentSettings.maxDelay);
+      const delaySec = Math.floor(Math.random() * (maxD - minD + 1) + minD);
+
+      let timeLeft = delaySec;
+
+      if (checkBtn) {
+        footerStatus.textContent = `${selectedCount}/${questionData.items.length} pasangan dicocokkan. Menjalankan Check dalam ${timeLeft}s...`;
+        footerStatus.style.color = '#34d399';
+
+        if (activeCountdownTimer) clearInterval(activeCountdownTimer);
+
+        activeCountdownTimer = setInterval(() => {
+          timeLeft--;
+          if (timeLeft > 0) {
+            footerStatus.textContent = `${selectedCount}/${questionData.items.length} pasangan dicocokkan. Menjalankan Check dalam ${timeLeft}s...`;
+          } else {
+            clearInterval(activeCountdownTimer);
+            activeCountdownTimer = null;
+            footerStatus.textContent = 'Menjalankan Check...';
+            checkBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+            checkBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            checkBtn.click();
+          }
+        }, 1000);
+      } else {
+        const nextBtn = findStrictNextButton();
+        const isFinishStep = !nextBtn || (
+          (nextBtn.value || '').toLowerCase().includes('finish') ||
+          (nextBtn.value || '').toLowerCase().includes('selesai')
+        );
+
+        if (isFinishStep) {
+          stopAutoLoop('Semua soal telah selesai dijawab.');
+          playChimeSound(660);
+
+          const finishBanner = document.getElementById('ltensolver-finish-guard-banner');
+          if (finishBanner) {
+            finishBanner.style.display = 'block';
+            finishBanner.innerHTML = `
+              <b>🎉 Semua Soal Telah Selesai Dijawab!</b><br>
+              Seluruh ${selectedCount} pasangan jawaban pada soal terakhir telah dipilih secara otomatis. Ekstensi menahan tombol <strong>Finish attempt</strong> agar Anda dapat meninjau jawaban sebelum mengumpulkan kuis.
+            `;
+          }
+
+          footerStatus.textContent = 'Kuis selesai. Silakan periksa & kumpulkan.';
+          footerStatus.style.color = '#34d399';
+          return;
+        }
+
+        footerStatus.textContent = `${selectedCount}/${questionData.items.length} pasangan dicocokkan. Lanjut otomatis dalam ${timeLeft}s...`;
+        footerStatus.style.color = '#34d399';
+
+        if (activeCountdownTimer) clearInterval(activeCountdownTimer);
+
+        activeCountdownTimer = setInterval(() => {
+          timeLeft--;
+          if (timeLeft > 0) {
+            footerStatus.textContent = `${selectedCount}/${questionData.items.length} pasangan dicocokkan. Lanjut otomatis dalam ${timeLeft}s...`;
+          } else {
+            clearInterval(activeCountdownTimer);
+            activeCountdownTimer = null;
+            executeNextPageClick();
+          }
+        }, 1000);
+      }
+    } else {
+      footerStatus.textContent = `${selectedCount}/${questionData.items.length} pasangan dicocokkan (Highlight Mode)`;
       footerStatus.style.color = '#34d399';
     }
   }
@@ -1305,6 +1533,26 @@
 
       const modelLabel = result.modelUsed ? ` • ${result.modelUsed}` : '';
       descEl.textContent = `${result.explanation || (result.isFix ? 'Kode berhasil diperbaiki berdasarkan output test case.' : 'Kode program berhasil diisikan ke editor CodeRunner.')}${modelLabel}`;
+      return;
+    }
+
+    if (result.type === 'matching') {
+      const matchCount = result.matches?.length || 0;
+      choiceEl.textContent = `${matchCount} Pasangan Cocok`;
+      confEl.textContent = 'Matching';
+      confEl.className = 'ltensolver-confidence-badge';
+
+      if (result.modelUsed) {
+        currentSettings.activeModel = result.modelUsed;
+        const modelBadge = document.getElementById('ltensolver-widget-model');
+        if (modelBadge) {
+          modelBadge.textContent = result.modelUsed;
+          modelBadge.title = `Model aktif: ${result.modelUsed}`;
+        }
+      }
+
+      const modelLabel = result.modelUsed ? ` • ${result.modelUsed}` : '';
+      descEl.textContent = `Seluruh ${matchCount} pasangan dropdown berhasil dicocokkan otomatis oleh AI${modelLabel}.`;
       return;
     }
 

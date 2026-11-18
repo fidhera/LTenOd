@@ -109,6 +109,11 @@ Berikut ringkasan perubahan teknis dan fungsional yang telah diimplementasikan:
    - Pada soal terakhir (atau saat tombol berubah menjadi *Finish attempt*), opsi jawaban dicentang terlebih dahulu di layar.
    - Ekstensi secara sadar menahan tombol *Finish attempt* agar mahasiswa dapat memeriksa kembali rekapitulasi jawaban sebelum kuis dikumpulkan secara manual.
 
+10. **Otomasi Soal Mencocokkan Pasangan (Matching / Dropdown per Baris V-Class)**
+   - Mendeteksi tipe soal Moodle `qtype_match` yang menyajikan tabel berisi daftar kata dan menu dropdown (*select*) pilihan jawaban.
+   - Mengekstrak seluruh baris pertanyaan beserta daftar opsi dropdown secara utuh, lalu meminta AI mencocokkan setiap pasangan kata secara presisi.
+   - Memilih nilai opsi yang tepat pada setiap elemen `<select>` di DOM, memicu event `change` dan `input` Moodle, serta memberikan highlight visual dan lencana status pada setiap baris.
+
 ---
 
 ## Fitur Utama
@@ -272,7 +277,8 @@ LTenOd/
 │   ├── praktikum-ug-ac-id.html                # Simulasi halaman kuis standar praktikum
 │   ├── praktikum-ug-ngoding.html              # Simulasi soal koding CodeRunner
 │   ├── praktikum-ug-ngoding-incorrect.html    # Simulasi koding dengan kegagalan test case
-│   └── vclass-ac-id.html                      # Simulasi halaman kuis V-Class
+│   ├── vclass-ac-id.html                      # Simulasi halaman kuis V-Class
+│   └── vclass-list-tr.html                    # Simulasi soal mencocokkan kata (matching dropdown)
 │
 ├── popup/
 │   ├── popup.html                             # Antarmuka panel pengaturan ekstensi

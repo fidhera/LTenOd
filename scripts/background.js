@@ -118,7 +118,16 @@ async function handleSolveQuestion(data) {
     }
   }
 
-  // Tipe 2: Soal Pilihan Ganda (Multichoice)
+  // Tipe 2: Soal Mencocokkan Pasangan (Matching / Dropdown per baris)
+  if (data.type === 'matching') {
+    if (provider === 'gemini') {
+      return await solveMatchingWithGemini({ apiKey, model, ...data });
+    } else {
+      return await solveMatchingWithOpenAICompatible({ baseUrl, apiKey, model, ...data });
+    }
+  }
+
+  // Tipe 3: Soal Pilihan Ganda (Multichoice)
   const { questionText, options, images, eliminatedOptions } = data;
   const optionsFormatted = (options || []).map((opt) => `${opt.letter}. ${opt.text}`).join('\n');
 
@@ -555,6 +564,203 @@ function parseCodeRunnerResponse(rawText, modelUsed, isFix = false) {
     isFix,
     modelUsed,
     confidence: isFix ? 'Refined' : 'Tinggi'
+  };
+}
+
+/**
+ * Pemecah soal mencocokkan kata/konsep (Matching) via Google Gemini Native
+ */
+async function solveMatchingWithGemini({ apiKey, model, questionText, items, images }) {
+  const itemsText = (items || []).map((it, idx) => `${idx + 1}. [${it.itemText}]`).join('\n');
+
+  let optionsText = '';
+  if (items && items.length > 0 && items[0].options) {
+    optionsText = items[0].options.map(opt => `- Value: "${opt.value}" | Teks: "${opt.text}"`).join('\n');
+  }
+
+  const userPrompt = `Anda adalah asisten cerdas untuk menyelesaikan soal mencocokkan pasangan kata/makna/konsep (Matching Question).
+SOAL:
+${questionText}
+
+DAFTAR KATA / PERTANYAAN:
+${itemsText}
+
+PILIHAN JAWABAN PADA DROPDOWN (Setiap item memilih satu yang paling tepat):
+${optionsText}
+
+TUGAS:
+Cocokkan SETIAP kata/pertanyaan di atas dengan pilihan jawaban yang paling tepat.
+PENTING: Kembalikan HANYA format JSON valid tanpa teks atau markdown pembungkus:
+{
+  "matches": [
+    {
+      "index": 0,
+      "itemText": "kata yang dicocokkan",
+      "chosenValue": "nilai value dari opsi (misal: '1', '2', dst)",
+      "chosenText": "teks lengkap opsi yang dipilih"
+    }
+  ]
+}`;
+
+  const parts = [{ text: userPrompt }];
+
+  if (images && images.length > 0) {
+    for (const img of images) {
+      if (img.data && img.mimeType) {
+        parts.push({
+          inlineData: {
+            mimeType: img.mimeType,
+            data: img.data
+          }
+        });
+      }
+    }
+  }
+
+  const payload = {
+    contents: [{ role: 'user', parts }],
+    generationConfig: {
+      temperature: 0.0,
+      maxOutputTokens: 2048,
+      responseMimeType: 'application/json'
+    }
+  };
+
+  const targetModel = model || 'gemini-2.5-flash';
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`;
+
+  const response = await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }, 25000);
+
+  const resJson = await response.json();
+  if (!response.ok) {
+    throw new Error(resJson.error?.message || `HTTP ${response.status}`);
+  }
+
+  const rawText = resJson.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!rawText) throw new Error('Tidak ada respon teks dari model.');
+
+  return parseMatchingResponse(rawText, targetModel);
+}
+
+/**
+ * Pemecah soal mencocokkan kata/konsep (Matching) via OpenAI-Compatible / 9Router
+ */
+async function solveMatchingWithOpenAICompatible({ baseUrl, apiKey, model, questionText, items, images }) {
+  if (!baseUrl) {
+    throw new Error('Base URL belum diisi untuk provider ini.');
+  }
+
+  const itemsText = (items || []).map((it, idx) => `${idx + 1}. [${it.itemText}]`).join('\n');
+
+  let optionsText = '';
+  if (items && items.length > 0 && items[0].options) {
+    optionsText = items[0].options.map(opt => `- Value: "${opt.value}" | Teks: "${opt.text}"`).join('\n');
+  }
+
+  const systemPrompt = `Anda adalah asisten cerdas untuk menyelesaikan soal mencocokkan kata/konsep (Matching Question).
+Output Anda HARUS berupa JSON valid tanpa teks atau markdown pembungkus:
+{
+  "matches": [
+    {
+      "index": 0,
+      "itemText": "kata yang dicocokkan",
+      "chosenValue": "nilai value dari opsi",
+      "chosenText": "teks lengkap opsi yang dipilih"
+    }
+  ]
+}`;
+
+  const userText = `SOAL:
+${questionText}
+
+DAFTAR KATA / PERTANYAAN:
+${itemsText}
+
+PILIHAN JAWABAN PADA DROPDOWN (Setiap item memilih satu yang paling tepat):
+${optionsText}
+
+Cocokkan SETIAP kata di atas dengan pilihan jawaban yang paling tepat. Kembalikan JSON:`;
+
+  const userContent = [];
+  userContent.push({ type: 'text', text: userText });
+
+  if (images && images.length > 0) {
+    for (const img of images) {
+      if (img.data && img.mimeType) {
+        userContent.push({
+          type: 'image_url',
+          image_url: {
+            url: `data:${img.mimeType};base64,${img.data}`
+          }
+        });
+      }
+    }
+  }
+
+  const payload = {
+    model: model || 'deepseek/deepseek-chat',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent.length === 1 ? userContent[0].text : userContent }
+    ],
+    temperature: 0.0,
+    max_tokens: 2048
+  };
+
+  const endpoint = `${baseUrl}/chat/completions`;
+  const response = await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://github.com/fidhera/LTenOd',
+      'X-Title': 'LTenOd'
+    },
+    body: JSON.stringify(payload)
+  }, 25000);
+
+  const resJson = await response.json();
+  if (!response.ok) {
+    throw new Error(resJson.error?.message || `HTTP ${response.status}`);
+  }
+
+  const rawText = resJson.choices?.[0]?.message?.content;
+  if (!rawText) throw new Error('Tidak ada respon teks dari model.');
+
+  return parseMatchingResponse(rawText, model);
+}
+
+/**
+ * Parsing & Sanitasi JSON Soal Matching
+ */
+function parseMatchingResponse(rawText, modelUsed) {
+  let cleaned = rawText.trim();
+  cleaned = cleaned.replace(/^```json/im, '').replace(/^```/im, '').replace(/```$/im, '').trim();
+
+  let matches = [];
+  try {
+    const matchJson = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    if (matchJson) {
+      const parsed = JSON.parse(matchJson[0]);
+      if (Array.isArray(parsed)) {
+        matches = parsed;
+      } else if (parsed.matches && Array.isArray(parsed.matches)) {
+        matches = parsed.matches;
+      }
+    }
+  } catch (e) {
+    console.error('[LTenOd] Gagal parse JSON Matching:', e);
+  }
+
+  return {
+    type: 'matching',
+    matches: matches,
+    modelUsed: modelUsed,
+    confidence: 'Tinggi'
   };
 }
 

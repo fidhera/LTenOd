@@ -18,7 +18,7 @@ const SITE_ADAPTERS = [
       url.includes('praktikum-correct.html') ||
       url.includes('praktikum-incorrect.html')
     )),
-    questionContainer: '.que.coderunner, .que.multichoice, .que',
+    questionContainer: '.que.match, .que.coderunner, .que.multichoice, .que',
     questionText: '.qtext',
     questionImages: '.qtext img',
     codeEditor: 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]',
@@ -37,8 +37,11 @@ const SITE_ADAPTERS = [
   {
     id: 'gundar-vclass',
     name: 'V-Class Gunadarma',
-    match: (host, url) => host.includes('v-class.gunadarma.ac.id') || (url && url.includes('vclass-ac-id.html')),
-    questionContainer: '.que.coderunner, .que.multichoice, .que',
+    match: (host, url) => host.includes('v-class.gunadarma.ac.id') || (url && (
+      url.includes('vclass-ac-id.html') ||
+      url.includes('vclass-list-tr.html')
+    )),
+    questionContainer: '.que.match, .que.coderunner, .que.multichoice, .que',
     questionText: '.qtext',
     questionImages: '.qtext img',
     codeEditor: 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]',
@@ -78,7 +81,7 @@ const SITE_ADAPTERS = [
     id: 'generic-moodle',
     name: 'Generic Moodle Exam',
     match: () => !!document.querySelector('.que .qtext, #responseform'),
-    questionContainer: '.que.coderunner, .que.multichoice, .que',
+    questionContainer: '.que.match, .que.coderunner, .que.multichoice, .que',
     questionText: '.qtext',
     questionImages: '.qtext img',
     codeEditor: 'textarea.coderunner-answer, textarea.edit_code, textarea[name$="_answer"]',

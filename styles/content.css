@@ -12,6 +12,16 @@
   transition: all 0.2s ease !important;
 }
 
+tr.ltensolver-highlighted-choice td {
+  background-color: rgba(16, 185, 129, 0.08) !important;
+}
+
+select.ltensolver-highlighted-choice,
+tr.ltensolver-highlighted-choice select {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.25) !important;
+}
+
 .ltensolver-choice-badge {
   display: inline-block !important;
   margin-left: 8px !important;
