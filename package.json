@@ -1,0 +1,13 @@
+{
+  "name": "ltenod",
+  "version": "1.4.0",
+  "description": "LTenOd - Moodle quiz solver extension (Gemini / OpenRouter / DeepSeek / Groq / OpenAI / custom gateway) with streaming, fallback chain, and history stats.",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "lint": "node --check scripts/background.js && node --check scripts/content.js && node --check scripts/adapters.js && node --check popup/popup.js && echo LINT OK"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

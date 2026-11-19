@@ -1,15 +1,18 @@
 /**
- * LTenOd - Content Stylesheet (Glassmorphism & Anti-Slop)
+ * LTenOd v1.4 - Content Stylesheet
+ * Arah desain: dark netral + aksen merah brand #E50914.
+ * Widget = satu-satunya elemen bergaya kaca (glass); sisanya permukaan solid.
+ * Tanpa animasi berulang, tanpa glow dekoratif.
  */
 
-/* Highlight Pilihan Jawaban */
+/* ---------------- Highlight pilihan jawaban ---------------- */
+
 .ltensolver-highlighted-choice {
   position: relative !important;
   background-color: rgba(16, 185, 129, 0.12) !important;
   border: 2px solid #10b981 !important;
   border-radius: 6px !important;
-  box-shadow: 0 0 14px rgba(16, 185, 129, 0.2) !important;
-  transition: all 0.2s ease !important;
+  transition: background-color 0.2s ease, border-color 0.2s ease !important;
 }
 
 tr.ltensolver-highlighted-choice td {
@@ -19,7 +22,6 @@ tr.ltensolver-highlighted-choice td {
 select.ltensolver-highlighted-choice,
 tr.ltensolver-highlighted-choice select {
   border-color: #10b981 !important;
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.25) !important;
 }
 
 .ltensolver-choice-badge {
@@ -27,15 +29,15 @@ tr.ltensolver-highlighted-choice select {
   margin-left: 8px !important;
   padding: 2px 7px !important;
   background-color: #10b981 !important;
-  color: #ffffff !important;
+  color: #04110b !important;
   font-size: 11px !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
   border-radius: 4px !important;
   vertical-align: middle !important;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2) !important;
 }
 
-/* Floating Glass Widget */
+/* ---------------- Floating widget ---------------- */
+
 .ltensolver-widget {
   position: fixed !important;
   bottom: 24px;
@@ -44,15 +46,15 @@ tr.ltensolver-highlighted-choice select {
   min-width: 230px;
   max-width: 450px;
   min-height: 38px;
-  background: rgba(15, 20, 30, 0.78) !important;
-  backdrop-filter: blur(16px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  background: rgba(18, 18, 23, 0.92) !important;
+  backdrop-filter: blur(14px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(150%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 10px !important;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45) !important;
   z-index: 9999999 !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-  color: #f1f5f9 !important;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  color: #f4f4f5 !important;
   font-size: 12px !important;
   resize: both;
   overflow: hidden;
@@ -84,13 +86,14 @@ tr.ltensolver-highlighted-choice select {
   transition: opacity 0.2s ease, transform 0.2s ease !important;
 }
 
-/* Header Widget */
+/* ---------------- Header widget ---------------- */
+
 .ltensolver-header {
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
   padding: 8px 12px !important;
-  background: rgba(255, 255, 255, 0.05) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
   cursor: grab !important;
   user-select: none !important;
@@ -107,41 +110,40 @@ tr.ltensolver-highlighted-choice select {
 .ltensolver-status-dot {
   width: 7px !important;
   height: 7px !important;
-  background-color: #10b981 !important;
+  background-color: #34d399 !important;
   border-radius: 50% !important;
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6) !important;
   flex-shrink: 0;
 }
 
 .ltensolver-status-dot.active {
-  background-color: #3b82f6 !important;
-  box-shadow: 0 0 6px rgba(59, 130, 246, 0.6) !important;
+  background-color: #e50914 !important;
 }
 
 .ltensolver-title {
-  font-weight: 600 !important;
+  font-weight: 700 !important;
   font-size: 12px !important;
   color: #ffffff !important;
+  letter-spacing: 0.01em;
 }
 
 .ltensolver-mode-pill {
   font-size: 10px !important;
   padding: 1px 6px !important;
-  border-radius: 3px !important;
+  border-radius: 4px !important;
   background: rgba(255, 255, 255, 0.06) !important;
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  color: #cbd5e1 !important;
-  font-family: ui-monospace, SFMono-Regular, monospace !important;
+  color: #c7c7d1 !important;
+  font-weight: 600;
 }
 
 .ltensolver-mode-pill.auto {
-  background: rgba(37, 99, 235, 0.25) !important;
-  color: #93c5fd !important;
-  border-color: rgba(37, 99, 235, 0.4) !important;
+  background: rgba(229, 9, 20, 0.18) !important;
+  color: #ff8a91 !important;
+  border-color: rgba(229, 9, 20, 0.45) !important;
 }
 
 .ltensolver-mode-pill.highlight {
-  background: rgba(16, 185, 129, 0.2) !important;
+  background: rgba(16, 185, 129, 0.16) !important;
   color: #6ee7b7 !important;
   border-color: rgba(16, 185, 129, 0.35) !important;
 }
@@ -155,21 +157,27 @@ tr.ltensolver-highlighted-choice select {
 .ltensolver-win-btn {
   background: rgba(255, 255, 255, 0.05) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  color: #cbd5e1 !important;
+  color: #c7c7d1 !important;
   font-size: 11px !important;
   cursor: pointer !important;
   padding: 2px 7px !important;
   border-radius: 4px !important;
   line-height: 1 !important;
-  transition: background-color 0.15s;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .ltensolver-win-btn:hover {
-  background: rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
   color: #ffffff !important;
 }
 
-/* Body Widget */
+.ltensolver-win-btn:focus-visible {
+  outline: 2px solid #e50914 !important;
+  outline-offset: 1px !important;
+}
+
+/* ---------------- Body widget ---------------- */
+
 .ltensolver-body {
   padding: 10px 12px !important;
   display: flex !important;
@@ -178,11 +186,13 @@ tr.ltensolver-highlighted-choice select {
   box-sizing: border-box;
 }
 
-/* Model Bar di Widget */
+/* ---------------- Model bar ---------------- */
+
 .ltensolver-model-bar {
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
+  gap: 6px;
   padding: 4px 8px !important;
   background: rgba(255, 255, 255, 0.04) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -192,16 +202,16 @@ tr.ltensolver-highlighted-choice select {
 }
 
 .ltensolver-model-prefix {
-  color: #94a3b8 !important;
+  color: #9d9da8 !important;
   font-size: 10px !important;
-  font-weight: 500 !important;
+  font-weight: 600 !important;
   text-transform: uppercase !important;
   letter-spacing: 0.5px !important;
 }
 
 .ltensolver-model-badge {
-  color: #60a5fa !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  color: #f4f4f5 !important;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, monospace !important;
   font-size: 10.5px !important;
   font-weight: 600 !important;
   max-width: 175px !important;
@@ -210,56 +220,57 @@ tr.ltensolver-highlighted-choice select {
   text-overflow: ellipsis !important;
 }
 
-/* Action Buttons */
-.ltensolver-btn-primary {
+/* ---------------- Tombol aksi ---------------- */
+
+.ltensolver-btn-primary,
+.ltensolver-btn-stop {
   width: 100% !important;
   padding: 8px 10px !important;
-  background: rgba(37, 99, 235, 0.85) !important;
   color: #ffffff !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border: none !important;
   border-radius: 6px !important;
-  font-weight: 500 !important;
+  font-weight: 700 !important;
   font-size: 12px !important;
+  font-family: inherit !important;
   cursor: pointer !important;
-  backdrop-filter: blur(8px) !important;
-  transition: all 0.15s ease !important;
+  transition: background-color 0.15s ease;
+}
+
+.ltensolver-btn-primary {
+  background: #e50914 !important;
 }
 
 .ltensolver-btn-primary:hover {
-  background: rgba(37, 99, 235, 1) !important;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important;
+  background: #ff1a25 !important;
 }
 
 .ltensolver-btn-primary.loading {
   background: rgba(255, 255, 255, 0.1) !important;
-  border-color: rgba(255, 255, 255, 0.15) !important;
-  color: #94a3b8 !important;
+  color: #9d9da8 !important;
   cursor: not-allowed !important;
 }
 
 .ltensolver-btn-stop {
-  width: 100% !important;
-  padding: 8px 10px !important;
-  background: rgba(239, 68, 68, 0.85) !important;
-  color: #ffffff !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  border-radius: 6px !important;
-  font-weight: 500 !important;
-  font-size: 12px !important;
-  cursor: pointer !important;
-  backdrop-filter: blur(8px) !important;
-  transition: all 0.15s ease !important;
+  background: #27272e !important;
+  color: #f87171 !important;
+  border: 1px solid rgba(248, 113, 113, 0.35) !important;
 }
 
 .ltensolver-btn-stop:hover {
-  background: rgba(239, 68, 68, 1) !important;
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4) !important;
+  background: #303038 !important;
 }
 
-/* Error Diagnostic Banner */
+.ltensolver-btn-primary:focus-visible,
+.ltensolver-btn-stop:focus-visible {
+  outline: 2px solid #e50914 !important;
+  outline-offset: 1px !important;
+}
+
+/* ---------------- Banner diagnosa error ---------------- */
+
 .ltensolver-error-banner {
-  background: rgba(239, 68, 68, 0.12) !important;
-  border: 1px solid rgba(239, 68, 68, 0.35) !important;
+  background: rgba(248, 113, 113, 0.1) !important;
+  border: 1px solid rgba(248, 113, 113, 0.35) !important;
   border-radius: 6px !important;
   padding: 8px 10px !important;
   color: #fca5a5 !important;
@@ -268,23 +279,24 @@ tr.ltensolver-highlighted-choice select {
 }
 
 .ltensolver-error-title {
-  font-weight: 600 !important;
+  font-weight: 700 !important;
   color: #f87171 !important;
   margin-bottom: 2px !important;
 }
 
 .ltensolver-error-desc {
-  color: #e2e8f0 !important;
+  color: #f4f4f5 !important;
   margin-bottom: 3px !important;
   word-break: break-word !important;
 }
 
 .ltensolver-error-advice {
-  color: #94a3b8 !important;
+  color: #9d9da8 !important;
   font-size: 10px !important;
 }
 
-/* Result Box */
+/* ---------------- Kotak hasil ---------------- */
+
 .ltensolver-result-box {
   background: rgba(255, 255, 255, 0.04) !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -296,6 +308,7 @@ tr.ltensolver-highlighted-choice select {
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
+  gap: 6px;
   margin-bottom: 3px !important;
   color: #34d399 !important;
   font-size: 11.5px !important;
@@ -306,27 +319,30 @@ tr.ltensolver-highlighted-choice select {
   padding: 1px 5px !important;
   background: rgba(16, 185, 129, 0.15) !important;
   border: 1px solid rgba(16, 185, 129, 0.3) !important;
-  border-radius: 3px !important;
+  border-radius: 4px !important;
   color: #34d399 !important;
+  font-weight: 600;
 }
 
 .ltensolver-result-desc {
   font-size: 11px !important;
-  color: #cbd5e1 !important;
+  color: #c7c7d1 !important;
   line-height: 1.35 !important;
 }
 
-/* Footer Status */
+/* ---------------- Footer status ---------------- */
+
 .ltensolver-footer {
   font-size: 11px !important;
-  color: #94a3b8 !important;
+  color: #9d9da8 !important;
   text-align: center !important;
   transition: color 0.15s ease;
 }
 
-/* Guard Banner */
+/* ---------------- Banner guard (kuis selesai) ---------------- */
+
 .ltensolver-guard-banner {
-  background: rgba(16, 185, 129, 0.15) !important;
+  background: rgba(16, 185, 129, 0.12) !important;
   border: 1px solid rgba(16, 185, 129, 0.3) !important;
   border-radius: 6px !important;
   padding: 10px !important;
@@ -336,9 +352,24 @@ tr.ltensolver-highlighted-choice select {
   text-align: center !important;
 }
 
-/* CodeRunner Active Editor Glow */
+/* ---------------- CodeRunner editor aktif ---------------- */
+
 .ltensolver-code-active {
   border: 2px solid #10b981 !important;
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.45) !important;
-  transition: all 0.3s ease !important;
+  transition: border-color 0.3s ease !important;
+}
+
+/* ---------------- Gerak hormati preferensi pengguna ---------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .ltensolver-widget,
+  .ltensolver-widget.is-popup-open,
+  .ltensolver-highlighted-choice,
+  .ltensolver-code-active,
+  .ltensolver-win-btn,
+  .ltensolver-btn-primary,
+  .ltensolver-btn-stop,
+  .ltensolver-footer {
+    transition: none !important;
+  }
 }

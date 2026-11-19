@@ -29,7 +29,7 @@ Sistem ini mengekstraksi teks soal, contoh test case, dan gambar langsung dari D
 
 ---
 
-[Deskripsi](#deskripsi) • [Demo Penggunaan](#demo-penggunaan) • [Rincian Pembaruan Fitur](#rincian-pembaruan-fitur) • [Fitur Utama](#fitur-utama) • [Arsitektur Sistem](#arsitektur-sistem) • [Panduan Pengambilan API Key](#panduan-pengambilan-api-key) • [Panduan Instalasi & Pemakaian](#panduan-instalasi--pemakaian) • [Pemecahan Masalah (Troubleshooting)](#pemecahan-masalah-troubleshooting) • [Struktur Direktori](#struktur-direktori) • [Penulis](#penulis)
+[Deskripsi](#deskripsi) • [Demo Penggunaan](#demo-penggunaan) • [Perubahan v1.4.0](#perubahan-v140) • [Rincian Pembaruan Fitur](#rincian-pembaruan-fitur-v13x) • [Fitur Utama](#fitur-utama) • [Arsitektur Sistem](#arsitektur-sistem) • [Panduan Pengambilan API Key](#panduan-pengambilan-api-key) • [Panduan Instalasi & Pemakaian](#panduan-instalasi--pemakaian) • [Pengujian Otomatis](#pengujian-otomatis-playwright) • [Pemecahan Masalah (Troubleshooting)](#pemecahan-masalah-troubleshooting) • [Struktur Direktori](#struktur-direktori) • [Penulis](#penulis)
 </div>
 
 ---
@@ -66,7 +66,43 @@ Berikut rekaman demonstrasi pengujian LTenOd pada portal resmi Universitas Gunad
 
 ---
 
-## Rincian Pembaruan Fitur
+## Perubahan v1.4.0
+
+1. **Keamanan dan Izin yang Lebih Ketat**
+   - Seluruh kredensial API kini disimpan secara eksklusif di `chrome.storage.local` perangkat Anda. Tidak ada API key yang lagi tertanam di dalam kode sumber.
+   - Izin host disempitkan: hanya domain Gunadarma dan endpoint provider AI yang diminta secara langsung. Domain tambahan (misalnya router kustom) diminta sebagai izin opsional saat konfigurasi disimpan.
+   - Seluruh teks dinamis pada widget disisipkan lewat `textContent` (tanpa `innerHTML`) untuk mencegah injeksi markup dari konten halaman.
+
+2. **Rantai Model Cadangan (Fallback Chain)**
+   - Anda dapat mendaftarkan beberapa model cadangan di popup. Jika model utama gagal (kuota habis, timeout, gangguan server), ekstensi otomatis mencoba model cadangan berikutnya secara berurutan.
+   - Format isian fleksibel: tulis nama model untuk provider aktif, atau format `provider|model` (contoh `openrouter|deepseek/deepseek-chat`) untuk fallback lintas provider.
+
+3. **Streaming Respons dan Progres Langsung**
+   - Respons AI di-stream lewat SSE sehingga jawaban mulai diproses lebih cepat.
+   - Widget menampilkan progres real-time (jumlah karakter yang telah ditulis) dan status model cadangan yang sedang dipakai.
+
+4. **Riwayat dan Statistik Pengerjaan**
+   - Setiap jawaban tercatat pada riwayat lokal (maksimum 200 entri) beserta status akhirnya: benar, salah, atau error.
+   - Popup menampilkan total, jumlah benar, jumlah salah, tingkat akurasi, dan daftar riwayat terbaru.
+
+5. **Tombol Mulai di Tab Ini**
+   - Popup kini memiliki tombol untuk langsung memulai auto-solve pada tab kuis yang sedang terbuka, tanpa perlu menyentuh widget terlebih dahulu.
+
+6. **Diagnosa Kesalahan Terstruktur**
+   - Kegagalan API dipetakan ke kode kesalahan standar (rate limit, autentikasi, model tidak ditemukan, timeout, server, respons tidak valid) dan ditampilkan pada widget beserta saran tindakan perbaikan.
+
+7. **Optimasi Gambar Soal**
+   - Gambar pada soal diambil melalui service worker (bebas kendala CORS) lalu diskalakan turun hingga sisi terpanjang 1024 piksel sebelum dikirim ke model, menghemat token dan latensi.
+
+8. **Antarmuka Baru**
+   - Popup dan widget didesain ulang: dasar gelap netral dengan aksen merah khas LTenOd (#E50914), permukaan solid, tipografi sistem, dan status yang jelas.
+
+9. **Pengujian Otomatis**
+   - Rangkaian pengujian Playwright berbasis halaman mock (`mock-pages/`) memverifikasi ekstraksi soal pilihan ganda, matching, dan CodeRunner, guard tombol Next, memori eliminasi, serta alur error tanpa API key.
+
+---
+
+## Rincian Pembaruan Fitur (v1.3.x)
 
 Berikut ringkasan perubahan teknis dan fungsional yang telah diimplementasikan:
 
@@ -127,6 +163,10 @@ Berikut ringkasan perubahan teknis dan fungsional yang telah diimplementasikan:
   - Mode sembunyi instan menggunakan pintasan keyboard `Alt + H`.
   - Mulai atau hentikan pengerjaan kuis menggunakan pintasan keyboard `Alt + S`.
 - **Pencarian Model Real-Time:** Menampung hingga 900+ model dari 9Router atau OpenRouter dengan kotak filter pencarian cepat langsung di popup pengaturan.
+- **Rantai Model Cadangan:** Daftarkan model cadangan; jika model utama gagal, ekstensi otomatis beralih ke cadangan berikutnya tanpa menghentikan kuis.
+- **Streaming Respons:** Jawaban AI diproses secara streaming dengan indikator progres langsung pada widget.
+- **Riwayat dan Statistik:** Rekap total soal, jawaban benar, jawaban salah, dan tingkat akurasi tersaji di popup.
+- **Mulai di Tab Ini:** Tombol pada popup untuk langsung menjalankan auto-solve pada tab kuis yang terbuka.
 - **Uji Koneksi dan Latensi:** Mengukur waktu respons (*ping/latency*) endpoint API secara riil dalam satuan milidetik (ms).
 - **Notifikasi Audio:** Membunyikan nada Web Audio API saat seluruh rangkaian kuis berhasil diselesaikan.
 
@@ -245,11 +285,32 @@ LTenOd membutuhkan API Key untuk memproses penalaran soal. Anda dapat memilih sa
 
 ---
 
+## Pengujian Otomatis (Playwright)
+
+Rangkaian pengujian menjalankan Chromium dengan ekstensi dimuat, lalu menguji ekstraksi soal, guard navigasi, memori eliminasi, popup, dan alur error pada halaman mock `mock-pages/`.
+
+```bash
+npm install
+npx playwright install chromium
+npm test
+```
+
+Untuk memeriksa sintaks seluruh skrip tanpa menjalankan browser:
+
+```bash
+npm run lint
+```
+
+Catatan: pengujian memakai halaman `file://` sehingga Chromium dijalankan dengan flag `--allow-file-access-from-files`. Jika unduhan browser gagal karena jaringan, jalankan `npm run lint` terlebih dahulu dan jalankan `npm test` saat jaringan tersedia.
+
+---
+
 ## Pemecahan Masalah (Troubleshooting)
 
 | Pesan Kendala di Widget | Akar Masalah | Tindakan Perbaikan |
 | :--- | :--- | :--- |
-| **Koneksi Timeout (>20s)** | Server penyedia AI sedang mengalami antrean padat atau sinyal internet lokal tidak stabil. | Ekstensi telah mencoba mengulang otomatis 2 kali. Jika masih terjadi, buka popup pengaturan dan ganti ke model yang lebih ringan (misal `gemini-2.5-flash` atau `gemini-2.5-flash-lite`). |
+| **API Key Belum Diisi** | Ekstensi belum dikonfigurasi dengan API key provider mana pun. | Buka popup LTenOd, pilih provider, masukkan API Key, lalu klik **Simpan Konfigurasi**. |
+| **Koneksi Timeout (>20s)** | Server penyedia AI sedang mengalami antrean padat atau sinyal internet lokal tidak stabil. | Ekstensi telah mencoba mengulang otomatis 2 kali. Jika masih terjadi, buka popup pengaturan dan ganti ke model yang lebih ringan (misal `gemini-2.5-flash` atau `gemini-2.5-flash-lite`), atau daftarkan model cadangan pada bagian **Model Cadangan (Fallback)**. |
 | **Kuota / Token Habis (HTTP 429)** | Saldo token pada akun API provider telah habis atau terkena batas kuota harian. | Isi ulang kredit token akun Anda atau beralih sementara ke Google Gemini API (tier gratis). |
 | **API Key Tidak Valid (HTTP 401/403)** | Token API yang dimasukkan keliru, kedaluwarsa, atau tidak memiliki izin akses model. | Buka popup ekstensi, periksa kembali karakter API Key (pastikan tidak ada spasi di awal atau akhir), lalu simpan ulang. |
 | **Model Tidak Ditemukan (HTTP 404)** | Nama ID model yang dipilih tidak terdaftar pada endpoint provider yang bersangkutan. | Buka popup ekstensi, klik **Deteksi & Periksa Model**, lalu pilih salah satu model yang muncul pada daftar dropdown. |
@@ -287,15 +348,20 @@ LTenOd/
 │
 ├── scripts/
 │   ├── adapters.js                            # Selektor DOM portal Moodle (Praktikum, V-Class, IFLab)
-│   ├── background.js                          # Service worker: pemanggil REST API Gemini dan OpenAI
+│   ├── background.js                          # Service worker: streaming API, fallback chain, retry, & riwayat
 │   └── content.js                             # Skrip injeksi halaman: ekstraksi soal, widget, & auto-navigasi
 │
 ├── styles/
 │   └── content.css                            # Desain visual widget floating, status bar, & highlight
 │
+├── tests/
+│   └── extension.spec.js                      # Pengujian Playwright (ekstraksi, guard, popup, alur error)
+│
 ├── .gitattributes                             # Konfigurasi pelacakan Git LFS untuk video
 ├── .gitignore                                 # Berkas yang dikecualikan dari repositori
 ├── manifest.json                              # Berkas manifes ekstensi Chrome Manifest V3
+├── package.json                               # Skrip npm (lint & test) dan dependensi pengembangan
+├── playwright.config.js                       # Konfigurasi runner Playwright
 └── README.md                                  # Dokumentasi teknis proyek
 ```
 

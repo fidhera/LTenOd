@@ -1,5 +1,6 @@
 /**
- * LTenOd - Popup Script (Universal Multi-Provider & Real-time Search)
+ * LTenOd - Popup Script v1.4
+ * Multi-provider, model fallback chain, statistik riwayat, mulai-di-tab-ini.
  */
 
 const PRESET_URLS = {
@@ -12,7 +13,7 @@ const PRESET_URLS = {
 };
 
 const DEFAULT_MODELS = {
-  gemini: 'gemini-3.5-flash-lite',
+  gemini: 'gemini-2.5-flash-lite',
   openrouter: 'deepseek/deepseek-chat',
   deepseek: 'deepseek-chat',
   groq: 'llama-3.3-70b-versatile',
@@ -21,6 +22,7 @@ const DEFAULT_MODELS = {
 };
 
 let allAvailableModels = [];
+let fallbackModels = [];
 
 document.addEventListener('DOMContentLoaded', () => {
   // Beritahu tab aktif untuk menyembunyikan widget sejenak saat popup dibuka
@@ -48,10 +50,27 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnSave = document.getElementById('btnSave');
   const saveToast = document.getElementById('saveToast');
 
-  // Muat setting tersimpan
+  const btnStartHere = document.getElementById('btnStartHere');
+  const startStatus = document.getElementById('startStatus');
+
+  const fallbackModelInput = document.getElementById('fallbackModelInput');
+  const btnAddFallback = document.getElementById('btnAddFallback');
+  const fallbackList = document.getElementById('fallbackList');
+  const fallbackCountBadge = document.getElementById('fallbackCountBadge');
+
+  const btnClearHistory = document.getElementById('btnClearHistory');
+  const statTotal = document.getElementById('statTotal');
+  const statCorrect = document.getElementById('statCorrect');
+  const statWrong = document.getElementById('statWrong');
+  const statAccuracy = document.getElementById('statAccuracy');
+  const statList = document.getElementById('statList');
+
+  /* -------------------- Muat setting tersimpan -------------------- */
+
   chrome.storage.local.get([
     'provider', 'baseUrl', 'apiKey', 'activeModel', 'availableModels',
-    'lastLatency', 'solveMode', 'minDelay', 'maxDelay', 'audioAlert'
+    'lastLatency', 'solveMode', 'minDelay', 'maxDelay', 'audioAlert',
+    'fallbackModels', 'ltenod_history'
   ], (data) => {
     const provider = data.provider || 'gemini';
     providerSelect.value = provider;
@@ -74,6 +93,11 @@ document.addEventListener('DOMContentLoaded', () => {
       headerConnection.classList.add('connected');
     }
 
+    if (Array.isArray(data.fallbackModels)) {
+      fallbackModels = data.fallbackModels;
+    }
+    renderFallbackList();
+
     if (data.minDelay) minDelayInput.value = data.minDelay;
     if (data.maxDelay) maxDelayInput.value = data.maxDelay;
     if (typeof data.audioAlert === 'boolean') audioAlertCheckbox.checked = data.audioAlert;
@@ -81,9 +105,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const mode = data.solveMode || 'auto';
     const radio = document.querySelector(`input[name="solveMode"][value="${mode}"]`);
     if (radio) radio.checked = true;
+
+    renderStats(data.ltenod_history || []);
   });
 
-  // Saat provider diganti
+  /* -------------------- Provider -------------------- */
+
   providerSelect.addEventListener('change', () => {
     handleProviderChange(providerSelect.value, true);
   });
@@ -115,7 +142,8 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleKeyVisibility.textContent = isPass ? 'Sembunyikan' : 'Perlihatkan';
   });
 
-  // Live Search Filter untuk Model (Bahkan untuk 900+ model)
+  /* -------------------- Live search model -------------------- */
+
   modelSearchInput.addEventListener('input', () => {
     const query = modelSearchInput.value.trim().toLowerCase();
     const currentSelected = modelSelect.value;
@@ -128,7 +156,8 @@ document.addEventListener('DOMContentLoaded', () => {
     populateModelDropdown(filtered, currentSelected);
   });
 
-  // Deteksi & Periksa Model dari Provider / Router
+  /* -------------------- Deteksi model -------------------- */
+
   btnDetectModels.addEventListener('click', () => {
     const provider = providerSelect.value;
     const apiKey = apiKeyInput.value.trim();
@@ -213,7 +242,175 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Simpan Pengaturan
+  /* -------------------- Model cadangan (fallback) -------------------- */
+
+  btnAddFallback.addEventListener('click', () => {
+    const raw = fallbackModelInput.value.trim();
+    if (!raw) return;
+
+    // Dukung format "provider|model" untuk fallback lintas provider
+    let provider = providerSelect.value;
+    let model = raw;
+    if (raw.includes('|')) {
+      const [p, m] = raw.split('|', 2);
+      if (p && m) {
+        provider = p.trim();
+        model = m.trim();
+      }
+    }
+
+    if (fallbackModels.some(f => f.model === model && f.provider === provider)) {
+      fallbackModelInput.value = '';
+      return;
+    }
+
+    fallbackModels.push({
+      provider,
+      model,
+      baseUrl: provider === 'gemini' ? '' : (PRESET_URLS[provider] || baseUrlInput.value.trim()),
+      apiKey: ''
+    });
+
+    fallbackModelInput.value = '';
+    renderFallbackList();
+  });
+
+  fallbackModelInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      btnAddFallback.click();
+    }
+  });
+
+  function renderFallbackList() {
+    fallbackList.innerHTML = '';
+    fallbackCountBadge.textContent = `${fallbackModels.length} cadangan`;
+
+    if (fallbackModels.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'fallback-empty';
+      li.textContent = 'Belum ada model cadangan. Contoh isi: gemini-2.5-flash atau openrouter|deepseek/deepseek-chat';
+      fallbackList.appendChild(li);
+      return;
+    }
+
+    fallbackModels.forEach((fb, idx) => {
+      const li = document.createElement('li');
+
+      const name = document.createElement('span');
+      name.className = 'fb-name';
+      name.textContent = fb.provider === providerSelect.value ? fb.model : `${fb.provider} | ${fb.model}`;
+      name.title = `${fb.provider} | ${fb.model}`;
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'fb-remove';
+      remove.textContent = '×';
+      remove.setAttribute('aria-label', `Hapus cadangan ${fb.model}`);
+      remove.addEventListener('click', () => {
+        fallbackModels.splice(idx, 1);
+        renderFallbackList();
+      });
+
+      li.append(name, remove);
+      fallbackList.appendChild(li);
+    });
+  }
+
+  /* -------------------- Mulai di tab ini -------------------- */
+
+  btnStartHere.addEventListener('click', () => {
+    startStatus.className = 'start-status visible';
+    startStatus.textContent = 'Memeriksa halaman aktif...';
+    btnStartHere.disabled = true;
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0];
+      if (!tab || !tab.id) {
+        showStartStatus('Tidak menemukan tab aktif.', 'err');
+        return;
+      }
+
+      chrome.tabs.sendMessage(tab.id, { action: 'ping' }, (res) => {
+        if (chrome.runtime.lastError || !res || !res.ok) {
+          showStartStatus('Ekstensi tidak aktif di tab ini. Buka halaman kuis Moodle/Gunadarma dulu.', 'err');
+          return;
+        }
+        if (!res.quizPage) {
+          showStartStatus('Tab ini bukan halaman soal kuis. Buka halaman soal dulu.', 'err');
+          return;
+        }
+
+        chrome.tabs.sendMessage(tab.id, { action: 'startSolve' }, () => {
+          if (chrome.runtime.lastError) {
+            showStartStatus('Gagal memulai. Coba muat ulang halaman kuis.', 'err');
+            return;
+          }
+          showStartStatus('Auto-solve dimulai. Lihat widget di halaman.', 'ok');
+          setTimeout(() => window.close(), 600);
+        });
+      });
+    });
+  });
+
+  function showStartStatus(text, kind) {
+    startStatus.className = `start-status visible ${kind}`;
+    startStatus.textContent = text;
+    btnStartHere.disabled = false;
+  }
+
+  /* -------------------- Statistik & riwayat -------------------- */
+
+  btnClearHistory.addEventListener('click', () => {
+    chrome.storage.local.set({ ltenod_history: [] }, () => renderStats([]));
+  });
+
+  function renderStats(history) {
+    const total = history.length;
+    const correct = history.filter(h => h.status === 'correct').length;
+    const wrong = history.filter(h => h.status === 'wrong').length;
+    const answered = correct + wrong;
+    const accuracy = answered > 0 ? Math.round((correct / answered) * 100) : 0;
+
+    statTotal.textContent = String(total);
+    statCorrect.textContent = String(correct);
+    statWrong.textContent = String(wrong);
+    statAccuracy.textContent = `${accuracy}%`;
+
+    statList.innerHTML = '';
+
+    if (total === 0) {
+      const li = document.createElement('li');
+      li.className = 'history-empty';
+      li.textContent = 'Belum ada riwayat. Riwayat terisi setelah ekstensi menjawab soal.';
+      statList.appendChild(li);
+      return;
+    }
+
+    history.slice(0, 10).forEach((h) => {
+      const li = document.createElement('li');
+
+      const dot = document.createElement('span');
+      dot.className = `h-dot ${h.status || 'pending'}`;
+      dot.title = h.status || 'pending';
+
+      const q = document.createElement('span');
+      const qText = (h.question || '').replace(/\s+/g, ' ').trim();
+      q.textContent = qText.length > 34 ? qText.slice(0, 34) + '...' : (qText || '(soal kosong)');
+      q.title = qText;
+
+      const model = document.createElement('span');
+      model.className = 'h-model';
+      model.textContent = h.model || '';
+      model.title = h.model || '';
+
+      li.append(dot, q, model);
+      statList.appendChild(li);
+    });
+  }
+
+  /* -------------------- Simpan pengaturan -------------------- */
+
   btnSave.addEventListener('click', () => {
     const provider = providerSelect.value;
     const baseUrl = baseUrlInput.value.trim();
@@ -224,42 +421,69 @@ document.addEventListener('DOMContentLoaded', () => {
     const maxDelay = Math.max(minDelay, parseInt(maxDelayInput.value, 10) || 3);
     const audioAlert = audioAlertCheckbox.checked;
 
-    btnSave.disabled = true;
-    btnSave.textContent = 'Menyimpan...';
+    const doSave = () => {
+      btnSave.disabled = true;
+      btnSave.textContent = 'Menyimpan...';
 
-    chrome.storage.local.set({
-      provider,
-      baseUrl,
-      apiKey,
-      activeModel,
-      availableModels: allAvailableModels,
-      solveMode: selectedMode,
-      minDelay,
-      maxDelay,
-      audioAlert
-    }, () => {
-      // Kirim sinyal ke tab aktif untuk menampilkan dan me-refresh widget
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0]?.id) {
-          chrome.tabs.sendMessage(tabs[0].id, {
-            action: 'showAndRefreshWidget',
-            config: {
-              provider,
-              activeModel,
-              solveMode: selectedMode,
-              minDelay,
-              maxDelay
-            }
-          }).catch(() => {});
+      chrome.storage.local.set({
+        provider,
+        baseUrl,
+        apiKey,
+        activeModel,
+        availableModels: allAvailableModels,
+        fallbackModels,
+        solveMode: selectedMode,
+        minDelay,
+        maxDelay,
+        audioAlert
+      }, () => {
+        // Kirim sinyal ke tab aktif untuk menampilkan dan me-refresh widget
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (tabs[0]?.id) {
+            chrome.tabs.sendMessage(tabs[0].id, {
+              action: 'showAndRefreshWidget',
+              config: {
+                provider,
+                activeModel,
+                solveMode: selectedMode,
+                minDelay,
+                maxDelay
+              }
+            }).catch(() => {});
+          }
+        });
+
+        // Tampilkan notifikasi singkat lalu segera tutup popup
+        saveToast.style.display = 'block';
+        setTimeout(() => {
+          window.close();
+        }, 150);
+      });
+    };
+
+    // Provider kustom butuh izin host runtime untuk origin base URL
+    if (provider === 'custom' && baseUrl) {
+      let origin;
+      try {
+        origin = new URL(baseUrl).origin + '/*';
+      } catch {
+        startStatus.className = 'start-status visible err';
+        startStatus.textContent = 'Base URL tidak valid. Perbaiki formatnya.';
+        return;
+      }
+
+      chrome.permissions.request({ origins: [origin] }, (granted) => {
+        if (granted) {
+          doSave();
+        } else {
+          startStatus.className = 'start-status visible err';
+          startStatus.textContent = 'Izin domain ditolak. Panggilan API ke domain itu akan gagal sampai izin diberikan.';
         }
       });
+      return;
+    }
 
-      // Tampilkan notifikasi singkat lalu segera tutup popup
-      saveToast.style.display = 'block';
-      setTimeout(() => {
-        window.close();
-      }, 150);
-    });
+    doSave();
   });
 
   // Jika popup ditutup tanpa klik simpan (misal klik di luar area popup)

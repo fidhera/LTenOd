@@ -1,7 +1,7 @@
-.DS_Store
-Thumbs.db
-*.log
-.vscode/
-.idea/
 node_modules/
-temp_repo/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+*.log
+.DS_Store
